@@ -1,0 +1,13 @@
+{
+  "name": "lotecontrol-montecarlo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LoteControl: gestión de lotes, separaciones, ventas, recibos y cartera para Condominio Campestre Montecarlo (un software por proyecto).",
+  "scripts": {
+    "servir": "python -m http.server 8765 --bind 127.0.0.1",
+    "test": "node tests/inventario-hoja.test.js && node tests/movimiento.test.js && node tests/operaciones.test.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}

@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoteControl · Gestión de lotes</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+/* =====================================================================
+   LoteControl — dirección Swiss (hoja catastral)
+   Blanco puro, una sola familia grotesca, filetes de 1 px como estructura,
+   azul Klein como único acento de interfaz. Los colores de estado
+   (separado, vendido, mora) son datos, no decoración.
+   ===================================================================== */
+:root{
+  --bg:#FFFFFF; --bg2:#F7F7F8; --panel:#FFFFFF; --panel2:#F7F7F8; --glass:rgba(255,255,255,.96);
+  --line:#E2E2E6; --line2:#B9B9C0; --rule:#111111;
+  --ink:#111111; --muted:#55555D; --faint:#6E6E76;
+  --accent:#002FA7; --accent2:#002FA7; --accent-ink:#FFFFFF; --accent-soft:rgba(0,47,167,.07);
+  --font:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-num:"Helvetica Neue Condensed","Arial Narrow","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-title:var(--font); --title-weight:700; --title-track:-.02em; --title-case:none;
+  --danger:#E4002B; --warn:#FF4F00;
+  --r:0px; --shadow:none;
+  --metal:var(--ink);
+  --lot:#FFFFFF; --ground:#EDEDF0; --road:#CFCFD5; --grass:#F1F1F3; --grass2:#E6E6EA; --tree:#C4C4CA; --page-bg:var(--bg);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--font);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+.muted{color:var(--muted)} .hidden{display:none!important}
+.t-title{font-family:var(--font);font-weight:700;letter-spacing:-.02em}
+.t-metal{color:var(--ink)}
+::selection{background:var(--accent);color:#fff}
+::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:var(--line2);border:3px solid var(--bg)} ::-webkit-scrollbar-track{background:transparent}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- armazón ---------- */
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;transition:grid-template-columns .25s ease}
+.side{position:sticky;top:0;height:100vh;background:var(--bg);border-right:1px solid var(--rule);display:flex;flex-direction:column;padding:22px 0 18px;gap:0}
+.side>*{padding-left:18px;padding-right:18px}
+.brand{display:flex;align-items:center;gap:12px;padding-bottom:20px;border-bottom:1px solid var(--rule)}
+.brand img{width:46px;height:auto;flex:none}
+.mark{width:40px;height:40px;display:grid;place-items:center;background:var(--ink);color:#fff;font-family:var(--font-num);font-stretch:condensed;font-weight:700;font-size:18px;letter-spacing:-.01em;flex:none}
+.b1{font-weight:700;font-size:15px;line-height:1.1;letter-spacing:-.015em}
+.b2{font-size:11.5px;color:var(--muted);margin-top:2px}
+.lbl{font-size:11px;font-weight:700;color:var(--ink);padding-top:16px;padding-bottom:6px}
+.side select{margin:0 18px;width:calc(100% - 36px);padding:8px 30px 8px 10px;border:1px solid var(--line2);border-radius:0;background-color:var(--bg);font-weight:500}
+nav{display:flex;flex-direction:column;margin-top:18px;border-top:1px solid var(--line);padding:0!important}
+nav button{display:flex;align-items:center;gap:11px;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:11px 18px;cursor:pointer;color:var(--ink);font-weight:500;border-radius:0;position:relative}
+nav button svg{width:17px;height:17px;flex:none;color:var(--muted)}
+nav button:hover{background:var(--bg2)}
+nav button.on{color:var(--accent);font-weight:700}
+nav button.on svg{color:var(--accent)}
+nav button.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--line)}
+.side-toggle{position:absolute;top:24px;right:-12px;width:24px;height:24px;border:1px solid var(--rule);background:var(--bg);color:var(--ink);cursor:pointer;display:grid;place-items:center;z-index:5;padding:0!important;border-radius:0}
+.side-toggle:hover{background:var(--ink);color:#fff}
+.side-toggle svg{width:13px;height:13px;transition:transform .25s}
+html.side-mini .shell{grid-template-columns:72px minmax(0,1fr)}
+html.side-mini .side>*{padding-left:12px;padding-right:12px}
+html.side-mini .side{align-items:stretch}
+html.side-mini .brand{justify-content:center}
+html.side-mini .brand>div:last-child,html.side-mini .side .lbl,html.side-mini #selProyecto,html.side-mini .side-foot .pill span:last-child,html.side-mini nav button span,html.side-mini .side-foot .btn span{display:none}
+html.side-mini nav button{justify-content:center;padding:12px}
+html.side-mini .side-foot{align-items:center}
+html.side-mini .side-foot .btn{padding:8px}
+html.side-mini .side-toggle svg{transform:rotate(180deg)}
+
+.pill{display:inline-flex;align-items:center;gap:8px;padding:2px 0;font-size:12px;color:var(--muted)}
+.pill .dot{width:8px;height:8px;background:var(--faint)}
+.pill.live .dot{background:var(--accent)}
+.pill.warn .dot{background:var(--warn)}
+
+/* ---------- botones ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;border-radius:0;border:1px solid var(--rule);background:var(--bg);cursor:pointer;font-weight:500;white-space:nowrap;transition:background .12s,color .12s}
+.btn:hover{background:var(--ink);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn.primary:hover{background:#00237D;border-color:#00237D}
+.btn.ghost{border-color:transparent;background:none;text-decoration:underline;text-underline-offset:3px}
+.btn.ghost:hover{background:none;color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.danger:hover{background:var(--danger);color:#fff}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn svg{flex:none}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn:disabled:hover{background:var(--bg);color:inherit}
+.btn.primary:disabled:hover{background:var(--accent);color:#fff}
+.banner{margin:16px 32px 0;padding:10px 14px;font-size:13px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-left:4px solid var(--warn)}
+
+/* ---------- cabecera ---------- */
+main{padding:26px 32px 22px;min-width:0}
+.head{display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap;padding-bottom:16px;margin-bottom:0;border-bottom:2px solid var(--rule)}
+.eyebrow,.ornament{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0;text-transform:none}
+.head h1{margin:2px 0 0;font-size:44px;line-height:.98;font-weight:700;letter-spacing:-.035em}
+.spacer{flex:1}
+
+/* ---------- indicadores: numerales como composición ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0;border-bottom:1px solid var(--rule);margin-bottom:18px}
+.kpi{padding:14px 16px 14px 0;border-right:1px solid var(--line);min-width:0}
+.kpi+.kpi{padding-left:16px}
+.kpi:last-child{border-right:0}
+.kpi .l{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:7px}
+.kpi .v{font-family:var(--font-num);font-stretch:condensed;font-size:38px;font-weight:700;letter-spacing:-.02em;line-height:1;margin-top:10px;white-space:nowrap}
+.kpi .v.acc{color:var(--accent)}
+.kpi .s{font-size:11.5px;color:var(--muted);margin-top:6px}
+.sw{width:9px;height:9px;display:inline-block;flex:none;border:1px solid rgba(0,0,0,.18)}
+
+/* avance por sector */
+.secchart{display:flex;align-items:flex-end;gap:0;padding:0;border:0}
+.secchart .ttl{font-size:11px;font-weight:700;color:var(--ink);writing-mode:vertical-rl;transform:rotate(180deg);align-self:stretch;text-align:right;margin-right:10px}
+.secchart .col{display:flex;flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer;width:62px;padding:0 8px;border-left:1px solid var(--line)}
+.secchart .pc{font-family:var(--font-num);font-stretch:condensed;font-size:17px;font-weight:700;line-height:1}
+.secchart .bar2{width:100%;height:40px;background:var(--bg2);position:relative;overflow:hidden}
+.secchart .bar2 i{position:absolute;left:0;right:0;bottom:0;background:var(--ink)}
+.secchart .nm{font-size:11px;color:var(--muted);white-space:nowrap;max-width:54px;overflow:hidden;text-overflow:ellipsis}
+.secchart .col.on .bar2 i{background:var(--accent)}
+.secchart .col.on .nm,.secchart .col.on .pc{color:var(--accent)}
+.secchart .col:hover .bar2{outline:1px solid var(--ink)}
+
+/* ---------- barra de búsqueda y filtros ---------- */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:nowrap;margin-bottom:14px}
+.search{padding:9px 13px 9px 34px;border:1px solid var(--rule);border-radius:0;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23111111' stroke-width='1.8'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") 11px 50% no-repeat;min-width:0;width:280px;flex:none}
+.search:focus,.sel:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.sel{padding:9px 32px 9px 11px;border:1px solid var(--line2);border-radius:0;background-color:var(--bg);max-width:190px;flex:none}
+.sbox{position:relative;flex:none}
+.sclear{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);width:24px;height:24px;cursor:pointer;line-height:1;font-size:17px}
+.sclear:hover{color:var(--ink)}
+.sugg{position:absolute;top:calc(100% - 1px);left:0;width:460px;max-height:min(460px,60vh);overflow:auto;z-index:25;background:var(--bg);border:1px solid var(--rule);padding:0}
+.sg-h{font-size:11px;font-weight:700;color:var(--ink);padding:10px 12px 6px;position:sticky;top:0;background:var(--bg);z-index:1;border-bottom:1px solid var(--line)}
+.sg-h span{color:var(--muted);font-weight:400;margin-left:6px}
+.sg-i{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line)}
+.sg-i.on{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.sg-i .lg{width:18px;height:12px;background:var(--lot);border:1px solid var(--line2);flex:none}
+.sg-i .lg.mzi{display:grid;place-items:center;font-size:9px;font-weight:700;color:#fff;background:var(--ink);border:0;width:24px;height:18px}
+.sg-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.sg-t b{font-weight:700;font-size:13px}
+.sg-t span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sg-p{font-size:13px;font-weight:700;white-space:nowrap}
+.sg-empty{padding:16px 12px;color:var(--muted);font-size:13px}
+.sg-empty span{font-size:12px;color:var(--faint)}
+.chips{display:flex;gap:0;flex-wrap:nowrap;margin-left:auto;flex:none;border:1px solid var(--line2)}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-right:1px solid var(--line2);background:var(--bg);cursor:pointer;font-size:12.5px;color:var(--ink);user-select:none;white-space:nowrap}
+.chip:last-child{border-right:0}
+.chip:hover{background:var(--bg2)}
+.chip.off{color:var(--faint)}
+.chip.off .lg{opacity:.35}
+.chip b{font-weight:700}
+.chip .lg{width:14px;height:10px;flex:none;background:var(--lot);border:1px solid var(--line2)}
+
+/* ---------- área de trabajo ---------- */
+.work{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.work.with-drawer{grid-template-columns:minmax(0,1fr) 400px}
+.card{background:var(--bg);border:1px solid var(--rule);border-radius:0;overflow:hidden}
+.work.with-drawer>.card:first-child{border-right:0}
+
+/* plano 3D */
+.v3d{position:relative;isolation:isolate;height:var(--vh-plano,calc(100vh - 262px));min-height:480px;background:var(--bg2)}
+.v3d canvas{display:block;width:100%!important;height:100%!important;outline:none}
+.v3d canvas:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.v3d .lbls{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:hidden}
+.ov3{position:absolute;z-index:3;display:flex;gap:6px;align-items:center}
+.ov3.tl{left:12px;top:12px;right:330px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:0;mask-image:linear-gradient(90deg,#000 92%,transparent)}
+.ov3.tl::-webkit-scrollbar{display:none}
+.ov3.tr{right:12px;top:12px}
+.ov3.bl{left:12px;bottom:12px;right:12px;justify-content:space-between;pointer-events:none}
+.ov3.bl>*{pointer-events:auto}
+.v3d .btn{background:var(--glass)}
+.v3d .btn:hover{background:var(--ink)}
+.sector{flex:none;display:inline-flex;align-items:baseline;gap:8px;padding:7px 12px;cursor:pointer;background:var(--glass);border:1px solid var(--rule);margin-right:-1px;font-size:12.5px;font-weight:500;color:var(--ink)}
+.sector small{color:var(--muted);font-size:11px}
+.sector:hover{background:var(--bg)}
+.sector.on{background:var(--ink);color:#fff;font-weight:700}
+.sector.on small{color:#C9C9CF}
+.seg3{display:flex;border:1px solid var(--rule);background:var(--glass)}
+.seg3 button{border:0;background:none;padding:6px 11px;cursor:pointer;color:var(--ink);font-weight:500;font-size:12.5px;white-space:nowrap;border-radius:0}
+.seg3 button+button{border-left:1px solid var(--rule)}
+.seg3 button.on{background:var(--ink);color:#fff}
+.btn.tour.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.hint3{font-size:11.5px;color:var(--muted);background:var(--glass);border:1px solid var(--line);padding:6px 10px}
+.tourcap{position:absolute;left:24px;bottom:24px;z-index:3;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .6s,transform .6s;background:var(--glass);border-left:4px solid var(--accent);padding:12px 18px 12px 16px}
+.tourcap.on{opacity:1;transform:none}
+.tourcap .t1{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+.tourcap .t2{color:var(--muted);font-size:13px;margin-top:6px}
+.tourcap.on ~ .ov3.bl{opacity:0}
+.dim3{font:700 11.5px var(--font);color:#fff;background:var(--accent);padding:2px 7px;white-space:nowrap;pointer-events:none}
+.dim3.area{font-size:12.5px;background:var(--bg);color:var(--accent);border:1px solid var(--accent)}
+.mz3{font-family:var(--font-num);font-stretch:condensed;font-weight:700;font-size:12px;color:var(--ink);letter-spacing:0;white-space:nowrap;transition:opacity .3s;background:rgba(255,255,255,.94);border:1px solid var(--rule);padding:1px 6px}
+.loading3{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);z-index:2;background:var(--bg2)}
+.splash{display:flex;flex-direction:column;align-items:center;gap:14px;font-size:13px}
+.splash img{width:86px;animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.splash img{animation:none}}
+
+/* control de navegación */
+.navctl{position:absolute;right:12px;bottom:12px;z-index:3;display:flex;flex-direction:column;background:var(--glass);border:1px solid var(--rule)}
+.navctl button{width:38px;height:38px;border:0;background:none;color:var(--ink);cursor:pointer;display:grid;place-items:center;border-bottom:1px solid var(--line);padding:0}
+.navctl button:last-child{border-bottom:0}
+.navctl button:hover{background:var(--ink);color:#fff}
+.navctl svg{width:18px;height:18px}
+.navctl .cmp-needle{transition:transform .15s linear;color:var(--muted)}
+.navctl .cmp.on{background:var(--accent-soft)}
+/* fondo del plano */
+.escs{position:absolute;right:62px;bottom:12px;z-index:3;display:flex;align-items:center;gap:6px;background:var(--glass);border:1px solid var(--rule);padding:6px 8px 6px 12px}
+.escs span{font-size:11px;font-weight:700;color:var(--ink);margin-right:4px}
+.escs button{width:20px;height:20px;border:1px solid var(--line2);cursor:pointer;padding:0;border-radius:0}
+.escs button.on{outline:2px solid var(--accent);outline-offset:1px}
+/* minimapa */
+.minimap{position:absolute;right:12px;bottom:12px;z-index:3;width:190px;background:var(--glass);border:1px solid var(--rule);padding:6px;cursor:pointer}
+.minimap svg{display:block;width:100%;height:auto}
+.minimap .mm-site{fill:var(--grass)} .minimap .mm-road{fill:var(--road)} .minimap .mm-lots{fill:#D6D6DB}
+.minimap .mm-view{fill:var(--accent-soft);stroke:var(--accent);stroke-width:6}
+
+/* plano 2D sobre retícula topográfica */
+.plano-wrap{position:relative}
+.plano-scroll{overflow:auto;height:var(--vh-plano,calc(100vh - 262px));min-height:480px;cursor:grab;
+  background-color:var(--bg);
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:48px 48px}
+.plano-tools{position:absolute;right:12px;top:12px;display:flex;gap:0;z-index:2}
+.plano-tools .btn{background:var(--bg);margin-left:-1px}
+.plano-tools .btn:hover{background:var(--ink)}
+svg.plano{display:block;margin:0 auto}
+svg.plano .street{fill:#DCDCE1}
+svg.plano .stxt{fill:var(--muted);font-size:10px;font-weight:700}
+svg.plano .mz{fill:var(--ink);font-size:11px;font-weight:700}
+svg.plano .lot{cursor:pointer;stroke:var(--ink);stroke-width:1}
+svg.plano .lot:hover{fill:var(--accent-soft)!important}
+svg.plano .lot.dim{opacity:.18}
+svg.plano .lot.sel{stroke:var(--accent);stroke-width:3}
+svg.plano .ltxt{fill:var(--ink);font-size:11px;font-weight:700;pointer-events:none;text-anchor:middle}
+svg.plano.real .lot{stroke-width:.3;fill:var(--lot)}
+svg.plano .ring{stroke-width:1.05;fill-opacity:.16;stroke-linejoin:miter;pointer-events:none}
+svg.plano .ring.g{stroke-width:3}
+svg.plano .ring.dim{opacity:.15}
+svg.plano .cota{stroke:var(--accent);pointer-events:none}
+svg.plano .cotat{fill:var(--accent);font-weight:700;text-anchor:middle;paint-order:stroke;stroke:#fff;pointer-events:none}
+svg.plano .sitio{fill:var(--grass);stroke:var(--ink);stroke-width:1}
+svg.plano .verde{fill:var(--grass2)}
+svg.plano .arb circle{fill:var(--tree);opacity:.7}
+svg.plano.real .street{fill:var(--road)}
+svg.plano.real .ltxt{font-size:3.4px;font-weight:700}
+svg.plano.real .mzl{font-family:var(--font-num);font-stretch:condensed;font-weight:700;fill:var(--ink);paint-order:stroke;stroke:#fff;stroke-linejoin:round;text-anchor:middle;pointer-events:none}
+svg.plano.real .selo{fill:none;stroke:var(--accent);stroke-width:1.4;pointer-events:none}
+
+.tip{position:fixed;pointer-events:none;background:var(--bg);border:1px solid var(--rule);color:var(--ink);padding:9px 12px;font-size:12.5px;z-index:50;max-width:250px;line-height:1.4}
+.tip .tp{font-size:16px;font-weight:700;margin-top:2px}
+
+/* ---------- tablas ---------- */
+.tbl-wrap{overflow:auto;max-height:calc(100vh - 262px)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{position:sticky;top:0;background:var(--bg);font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;z-index:1;box-shadow:inset 0 -1px 0 var(--rule)}
+td.n,th.n{text-align:right}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--bg2)}
+.badge{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500}
+.badge i{width:9px;height:9px;border:1px solid rgba(0,0,0,.18)}
+.tag{display:inline-flex;align-items:center;gap:6px;padding:1px 7px;font-size:11.5px;font-weight:700;border:1px solid var(--line2);color:var(--ink);background:var(--bg)}
+.tag i{width:8px;height:8px;border:1px solid rgba(0,0,0,.18)}
+.tag.red{border-color:var(--danger);color:var(--danger)}
+.tag.green{border-color:var(--line2);color:var(--ink)}
+.tag.amber{border-color:var(--warn);color:#B83800}
+.tag.acc{border-color:var(--accent);color:var(--accent)}
+.sec-title{font-weight:700;font-size:15px;padding:18px 14px 8px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--rule)}
+.bar-top{display:flex;align-items:center;padding:11px 14px;gap:8px;border-bottom:1px solid var(--rule)}
+
+/* ---------- ficha del lote: folio catastral ---------- */
+.drawer{position:sticky;top:16px;max-height:var(--vh-plano,calc(100vh - 32px));overflow:auto;background:var(--bg)}
+.dh{padding:16px 20px 16px;border-bottom:1px solid var(--rule);display:flex;align-items:flex-start;gap:10px}
+.dh>div:first-child{flex:1;min-width:0}
+.dh h2{margin:4px 0 0;font-size:22px;line-height:1.15}
+.folio{display:grid;grid-template-columns:auto auto;justify-content:start;margin:10px 0 0}
+.folio .fc{display:block;padding-right:22px}
+.folio .fc+.fc{padding-left:18px;padding-right:0;border-left:1px solid var(--rule)}
+.folio .fk{display:block;font-size:11px;font-weight:700;color:var(--ink)}
+.folio .fn{display:block;font-family:var(--font-num);font-stretch:condensed;font-weight:700;font-size:92px;line-height:.82;letter-spacing:-.04em;margin-top:6px}
+.folio .fn.long{font-size:56px;line-height:.9}
+.dh .tags{margin-top:14px;display:flex;gap:6px;flex-wrap:wrap}
+.price{padding:16px 20px;border-bottom:1px solid var(--line)}
+.price .pv{font-family:var(--font-num);font-stretch:condensed;font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.05;color:var(--ink)}
+.price .ps{font-size:12px;color:var(--muted)}
+.ds{padding:14px 20px;border-bottom:1px solid var(--line)}
+.ds h3{margin:0 0 10px;font-size:12px;font-weight:700;color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.grid2 .k{font-size:11.5px;color:var(--muted)}
+.grid2 .v{font-weight:700}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+.bar{height:6px;background:var(--bg2);overflow:hidden;margin:12px 0 4px;border:1px solid var(--line)}
+.bar i{display:block;height:100%;background:var(--accent)}
+.mini td,.mini th{padding:6px 6px;font-size:12.5px}
+.mini tbody tr{cursor:default}
+.hist{list-style:none;margin:0;padding:0;font-size:12.5px}
+.hist li{padding:7px 0;border-bottom:1px solid var(--line)}
+.hist li:last-child{border:0}
+.x{margin-left:auto;border:0;background:none;font-size:24px;cursor:pointer;color:var(--ink);line-height:1;padding:0 2px}
+.x:hover{color:var(--accent)}
+.hint{font-size:11.5px;color:var(--muted)}
+svg.medidas{width:100%;height:auto;display:block;margin-bottom:6px}
+svg.medidas.mini{width:170px;height:118px;flex:none;margin:0;border:1px solid var(--line);background-color:var(--bg);
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:17px 17px}
+.pgrid{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mz-poly{fill:#fff;stroke:var(--ink);stroke-width:1.2}
+.mz-cota{stroke:var(--accent);stroke-width:.9}
+.mz-t{fill:var(--accent);font:700 10px var(--font);text-anchor:middle}
+.mz-a{fill:var(--ink);font:700 11px var(--font);text-anchor:middle}
+.plan-box{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--rule);border-bottom:1px solid var(--line)}
+.plan-box div{padding:9px 10px 9px 0}
+.plan-box>div+div{padding-left:10px;border-left:1px solid var(--line)}
+.plan-box .k{font-size:11px;color:var(--muted)}
+.plan-box .v{font-weight:700;margin-top:2px}
+.plan-box div div{padding:0;border:0}
+
+/* ---------- panel de venta y modales ---------- */
+.sheet{position:fixed;top:0;right:0;bottom:0;width:470px;z-index:35;background:var(--bg);border-left:2px solid var(--rule);display:flex;flex-direction:column;animation:sheetIn .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes sheetIn{from{transform:translateX(40px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+.sheet form{display:flex;flex-direction:column;height:100%}
+.sheet header{display:flex;align-items:center;gap:10px;padding:20px 22px 14px;border-bottom:1px solid var(--rule)}
+.sheet header h2{margin:0;font-size:22px;letter-spacing:-.02em}
+.sheet .sub{font-size:12px;color:var(--muted)}
+.sheet .body{flex:1;overflow:auto;padding:18px 22px}
+.sheet footer{border-top:1px solid var(--rule);padding:14px 22px 18px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.sheet footer .calc{margin:0}
+.sheet footer .row{display:flex;justify-content:flex-end;gap:8px}
+body.selling .head,body.selling .kpis,body.selling .toolbar,body.selling .side{opacity:.25;pointer-events:none;transition:opacity .35s}
+body.selling .ov3,body.selling .plano-tools,body.selling .minimap{opacity:0;pointer-events:none}
+body.selling .drawer{visibility:hidden}
+
+.ov{position:fixed;inset:0;background:rgba(17,17,17,.42);display:grid;place-items:center;z-index:40;padding:16px}
+.modal{background:var(--bg);border:1px solid var(--rule);border-top:6px solid var(--rule);width:min(580px,100%);max-height:92vh;overflow:auto}
+.modal header{display:flex;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line)}
+.modal header h2{margin:0;font-size:20px;letter-spacing:-.02em}
+.modal .body{padding:18px 20px}
+.modal footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--line)}
+
+/* formularios */
+.f{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.f label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--ink);font-weight:700}
+.f label.full{grid-column:1/-1}
+.f input,.f select,.f textarea{padding:9px 11px;border:1px solid var(--line2);border-radius:0;background:var(--bg);color:var(--ink);font-size:14px;font-weight:400}
+.f input,.f select,.f textarea,.sel,.side select{color-scheme:light;accent-color:var(--accent)}
+.f select,.sel,.side select{appearance:none;-webkit-appearance:none;padding-right:32px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%23111111' stroke-width='1.6'%3E%3Cpath d='m1 1.5 5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+.f input:focus,.f select:focus,.f textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.f input::placeholder{color:var(--faint)}
+.f .err{border-color:var(--danger)!important}
+.f .errmsg{font-size:11.5px;color:var(--danger);margin-top:-1px;font-weight:500}
+.sec-h{grid-column:1/-1;font-size:13px;font-weight:700;color:var(--ink);margin-top:8px;padding-top:12px;border-top:1px solid var(--rule)}
+.sec-h.first{border:0;padding-top:0;margin-top:0}
+.calc{background:var(--bg2);border-top:1px solid var(--rule);padding:11px 13px;margin-top:14px;font-size:13px;display:grid;grid-template-columns:1fr auto;gap:4px 12px}
+.calc b{text-align:right}
+.seg{display:flex;gap:0;grid-column:1/-1}
+.seg label{flex:1;flex-direction:row;align-items:center;gap:8px;border:1px solid var(--line2);padding:10px 12px;cursor:pointer;color:var(--ink);font-weight:500}
+.seg label+label{margin-left:-1px}
+.seg label:has(input:checked){border-color:var(--accent);background:var(--accent-soft);position:relative;font-weight:700}
+.seg input[type=radio]{appearance:none;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink);margin:0;display:grid;place-items:center;flex:none}
+.seg input[type=radio]:checked{border-color:var(--accent)}
+.seg input[type=radio]:checked::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.f .upl-zone{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px dashed var(--ink);cursor:pointer;color:var(--muted);font-weight:400;flex-direction:row;text-align:left}
+.upl-zone:hover,.upl-zone.over{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.upl-zone svg{width:22px;height:22px;flex:none;color:var(--accent)}
+.upl-zone b{color:var(--ink);font-weight:700}
+.upl-zone small{color:var(--muted)}
+.upl-prev{display:flex;align-items:center;gap:12px;padding:8px;border:1px solid var(--line2);background:var(--bg2)}
+.upl-prev img{width:84px;height:84px;object-fit:cover;background:#fff}
+.clip{border:1px solid var(--accent);background:var(--bg);color:var(--accent);width:26px;height:26px;cursor:pointer;display:grid;place-items:center;padding:0}
+.clip svg{width:15px;height:15px}
+.clip:hover{background:var(--accent);color:#fff}
+
+/* recibo de caja */
+.recibo{background:#fff;color:#111;border:1px solid var(--rule);padding:20px;font-size:13px}
+.r-head,.r-band{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:10px}
+.r-id{display:flex;align-items:center;gap:12px}
+.r-band img{height:64px}
+.r-band b.t{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.r-head b.t{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.r-num{flex:none;white-space:nowrap;text-align:right;font-size:11px;font-weight:700;letter-spacing:0}
+.r-num b{display:block;font-family:var(--font-num);font-stretch:condensed;font-size:30px;line-height:1;letter-spacing:-.01em;color:#111;margin-top:4px}
+.r-row{display:grid;grid-template-columns:140px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid #E2E2E6}
+.r-row span{color:#55555D}
+.r-big{font-family:var(--font-num);font-stretch:condensed;font-size:24px;font-weight:700}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;z-index:60;font-weight:500;border-left:4px solid var(--accent)}
+.empty{padding:60px 20px;text-align:left}
+.empty h2{margin:0 0 6px;font-size:28px;letter-spacing:-.02em}
+
+@media (max-width:1100px){ .work.with-drawer{grid-template-columns:1fr} .work.with-drawer>.card:first-child{border-right:1px solid var(--rule)} .drawer{position:fixed;inset:0;max-height:none;z-index:30} }
+@media (max-width:820px){
+  .shell{grid-template-columns:1fr} .side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px;border-right:0;border-bottom:1px solid var(--rule)}
+  .side>*{padding-left:0;padding-right:0}
+  .brand{border:0;padding:0}
+  .side .lbl,.side-foot .pill{display:none} nav{flex-direction:row;flex-wrap:wrap;border:0;margin:0} nav button{border:0} .side-foot{margin:0;flex-direction:row;border:0;padding:0}
+  main{padding:16px} .search{min-width:0;flex:1} .ov3.tl{right:12px} .head h1{font-size:32px}
+  .toolbar{flex-wrap:wrap} .chips{margin-left:0}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <button class="side-toggle" id="sideToggle" title="Contraer / expandir menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 6-6 6 6 6"/></svg></button>
+    <div class="brand"><div class="mark" id="brandMark">LC</div><div><div class="b1" id="brandName">LoteControl</div><div class="b2" id="brandSub">Gestión de lotes</div></div></div>
+    <div class="lbl">Proyecto</div>
+    <select id="selProyecto" aria-label="Proyecto"></select>
+    <nav id="nav">
+      <button data-view="3d" title="Plano 3D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 3 7l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg><span>Plano 3D</span></button>
+      <button data-view="plano" title="Plano 2D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Plano 2D</span></button>
+      <button data-view="tabla" title="Inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M3 12h18M3 18h18"/></svg><span>Inventario</span></button>
+      <button data-view="cartera" title="Cartera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h4"/></svg><span>Cartera</span></button>
+    </nav>
+    <div class="side-foot">
+      <span class="pill" id="sync" title="Estado de sincronización"><span class="dot"></span><span id="syncTxt">Conectando…</span></span>
+      <button class="btn sm" id="btnAjustes" title="Ajustes del proyecto"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg><span>Ajustes del proyecto</span></button>
+      <button class="btn sm ghost" id="btnNuevoProyecto" title="Nuevo proyecto"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span>Nuevo proyecto</span></button>
+    </div>
+  </aside>
+  <div>
+    <div class="banner hidden" id="banner"></div>
+    <main id="app"><div class="empty"><h2>Cargando…</h2><p class="muted">Conectando con la base de datos compartida.</p></div></main>
+  </div>
+</div>
+<div id="tip" class="tip hidden"></div>
+
+<script>
+/* =========================================================
+   LoteControl — gestión de lotes en tiempo real
+   ========================================================= */
+const ESTADOS = {
+  disponible:{label:'Disponible', color:'#FFFFFF'},
+  separado:{label:'Separado', color:'#FF4F00'},
+  vendido:{label:'Vendido', color:'#111111'},
+  cuotas:{label:'Vendido a cuotas', color:'#55555D'},
+  contado:{label:'Vendido de contado', color:'#111111'},
+  bloqueado:{label:'No disponible', color:'#A3A3AA'},
+};
+const ESTADOS_BASE=Object.fromEntries(Object.entries(ESTADOS).map(([k,v])=>[k,v.color]));
+const MORA='#E4002B';
+/* en el plano todos los lotes llevan el mismo color base; el estado se marca con un contorno suave
+   (y en 3D los vendidos quedan más bajos, se distinguen desde lejos sin cambiar el color) */
+const RING = { separado:'#FF4F00', vendido:'#111111', cuotas:'#111111', contado:'#111111', bloqueado:'#A3A3AA' };
+const lotColor = () => getComputedStyle(document.documentElement).getPropertyValue('--lot').trim()||'#FFFFFF';
+function ringDe(l){ if((l.venta||l.separacion) && resumen(l).alerta) return MORA; return RING[l.estado]||null; }
+const MEDIOS = ['Transferencia','Efectivo','Consignación','Tarjeta','Cheque'];
+const UBICS = {'':'Todas las ubicaciones','esquinero':'Esquineros','intermedio':'Intermedios','doble frente':'Doble frente','comercial':'Comerciales'};
+const HOLDER = 'tab-' + Math.random().toString(36).slice(2,10);
+/* temas de marca por proyecto (se aplican solo al elegir ese proyecto) */
+const TEMAS = {
+  /* la marca del proyecto entra por su logo y su nombre; la paleta de la interfaz es la misma para todos */
+  montecarlo:{ mark:'CM', logo:'logo-montecarlo-cm.png', logoFull:'logo-montecarlo.png', sub:'Condominio Campestre', titulo:'Montecarlo' }
+};
+
+const S = { mode:'loading', db:null, user:null, uid:null, canWrite:true,
+  proyectos:{}, pid:null, lotes:{}, docs:{}, base:{}, view:'3d', ocultos:new Set(), q:'', ubic:'', pmax:0, sel:null, zoom:1,
+  sector:null, cam:'3d', sort:{k:'lote',d:1}, unsubLotes:null };
+
+/* ---------- utilidades ---------- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => '$' + Math.round(+n||0).toLocaleString('es-CO');
+const fmtM = n => { n=+n||0; return n>=1e9 ? '$'+(n/1e9).toLocaleString('es-CO',{maximumFractionDigits:2})+' mil M' : n>=1e6 ? '$'+(n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1})+' M' : fmt(n); };
+const fmtN = (n,d=0) => (+n||0).toLocaleString('es-CO',{maximumFractionDigits:d});
+const pad = (n,w=6) => String(n).padStart(w,'0');
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function addDays(iso,k){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+k); return d.toISOString().slice(0,10); }
+function addMonths(iso,k){ const [y,m,dd]=iso.split('-').map(Number); const t=new Date(y,m-1+k,1); const last=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(); t.setDate(Math.min(dd,last)); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+function diffDays(a,b){ return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5); }
+function fDate(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
+function fTs(ts){ const d=new Date(ts); return d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); }
+function uid(){ return Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4); }
+function slug(s){ return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,24) || 'proyecto'; }
+function toast(msg,ms=2600){ const t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status'); t.setAttribute('aria-live','polite'); t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),ms); }
+const mzName = m => String(m).startsWith('SN') ? 's/n '+String(m).slice(2) : m;
+const loteName = l => `Mz ${mzName(l.manzana)} · Lote ${pad(l.numero,2)}`;
+function precioLote(l){
+  if(+l.precio>0) return +l.precio;
+  if(+l.lista>0) return +l.lista;
+  const P=S.proyectos[l.proyecto]||{};
+  return (+P.valorM2>0 && +l.area>0) ? Math.round(l.area*P.valorM2/1000)*1000 : 0;
+}
+const fmtP = l => { const p=precioLote(l); return p?fmt(p):'Sin precio'; };
+const ubicTxt = l => [l.comercial?'Comercial':'', l.ubic? l.ubic[0].toUpperCase()+l.ubic.slice(1):'' , l.esquinero&&!l.ubic?'Esquinero':''].filter(Boolean).join(' · ');
+const isVend = e => e==='vendido'||e==='cuotas'||e==='contado';
+
+/* ---------- planos reales (geometría del PDF) ---------- */
+const GEO = {};
+async function loadGeo(file){
+  if(GEO[file]) return GEO[file];
+  const r=await fetch(file); if(!r.ok) throw new Error('No se pudo cargar el plano');
+  const g=await r.json();
+  g.lotes.forEach(x=>{ x.pts=x.p.map(q=>q[0]+','+q[1]).join(' '); let sx=0,sy=0; x.p.forEach(q=>{sx+=q[0];sy+=q[1];}); x.cx=+(sx/x.p.length).toFixed(1); x.cy=+(sy/x.p.length).toFixed(1); });
+  g.viasPath=g.vias.map(rs=>rs.map(r=>'M'+r.map(q=>q[0]+','+q[1]).join('L')+'Z').join('')).join('');
+  g.sectorOf={}; (g.sectores||[]).forEach(s=>s.manzanas.forEach(m=>g.sectorOf[m]=s.id));
+  g.byId={};
+  g.lotes.forEach(x=>{ g.byId[x.mz+'-'+x.n]=x;
+    const s=simplifyPoly(x.p);
+    x.sp=s; x.ipts=s.map(q=>(x.cx+(q[0]-x.cx)*0.84).toFixed(1)+','+(x.cy+(q[1]-x.cy)*0.84).toFixed(1)).join(' '); });
+  geoK(g);
+  GEO[file]=g; return g;
+}
+/* ---------- geometría: escala real y cotas ---------- */
+function polyArea(p){ let s=0; for(let i=0;i<p.length;i++){ const a=p[i], b=p[(i+1)%p.length]; s+=a[0]*b[1]-b[0]*a[1]; } return s/2; }
+function simplifyPoly(p,ang=0.13){
+  let pts=p.slice(), changed=true;
+  while(changed && pts.length>3){ changed=false;
+    for(let i=0;i<pts.length;i++){ const a=pts[(i-1+pts.length)%pts.length], b=pts[i], c=pts[(i+1)%pts.length];
+      const v1=[b[0]-a[0],b[1]-a[1]], v2=[c[0]-b[0],c[1]-b[1]]; const l1=Math.hypot(v1[0],v1[1]), l2=Math.hypot(v2[0],v2[1]);
+      if(l1<0.3||l2<0.3){ pts.splice(i,1); changed=true; break; }
+      const cr=(v1[0]*v2[1]-v1[1]*v2[0])/(l1*l2), dt=(v1[0]*v2[0]+v1[1]*v2[1])/(l1*l2);
+      if(Math.abs(Math.atan2(cr,dt))<ang){ pts.splice(i,1); changed=true; break; } } }
+  return pts;
+}
+function geoK(g){ // metros por unidad del plano, calibrado con las áreas oficiales
+  if(g._k) return g._k; const r=[];
+  g.lotes.forEach(x=>{ const A=Math.abs(polyArea(x.p)); if(x.a&&A>1) r.push(x.a/A); });
+  r.sort((a,b)=>a-b); g._k=Math.sqrt(r[r.length>>1]||1); return g._k;
+}
+function medidasLote(x,g){
+  const k=geoK(g), pts=simplifyPoly(x.p);
+  let edges=pts.map((a,i)=>{ const b=pts[(i+1)%pts.length]; const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1;
+    let nx=dy/L, ny=-dx/L; const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2;
+    if((mx+nx-x.cx)**2+(my+ny-x.cy)**2 < (mx-x.cx)**2+(my-x.cy)**2){ nx=-nx; ny=-ny; }
+    return {a,b,m:L*k,nx,ny,mx,my}; });
+  const minM = edges.length>6 ? 3 : 1;
+  return {pts,k,edges:edges.filter(e=>e.m>=minM)};
+}
+const fmtMts = m => (+m).toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2})+' m';
+function baseLote(pid,x){
+  return {proyecto:pid,manzana:x.mz,numero:x.n,area:x.a||0,frente:null,fondo:null,precio:null,lista:x.pr||0,ubic:x.u||'',comercial:!!x.c,
+    estado:x.v?'vendido':'disponible',deplano:!!x.v,sector:x.s,cliente:null,separacion:null,venta:null,pagos:[],historial:[]};
+}
+function curGeo(){ const P=S.proyectos[S.pid]; return P&&P.plano?GEO[P.plano]:null; }
+function rebuildLotes(){
+  const g=curGeo(); S.base={};
+  if(!g){ S.lotes={...S.docs}; return; }
+  const m={};
+  g.lotes.forEach(x=>{ const id=`${S.pid}-${x.mz}-${x.n}`; const b=baseLote(S.pid,x); S.base[id]=b; m[id]=S.docs[id]?{...b,...S.docs[id]}:b; });
+  for(const [k,v] of Object.entries(S.docs)) if(!m[k]) m[k]=v;
+  S.lotes=m;
+}
+
+function letras(n){
+  n=Math.round(Math.abs(n)); if(n===0) return 'cero pesos';
+  const U=['','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez','once','doce','trece','catorce','quince','dieciséis','diecisiete','dieciocho','diecinueve','veinte','veintiuno','veintidós','veintitrés','veinticuatro','veinticinco','veintiséis','veintisiete','veintiocho','veintinueve'];
+  const D=['','','','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
+  const C=['','ciento','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+  const apo = s => s.replace(/veintiuno$/,'veintiún').replace(/uno$/,'un');
+  const c999 = x => { if(x===100) return 'cien'; const c=Math.floor(x/100), r=x%100; let s=c?C[c]:''; if(r) s+=(s?' ':'')+(r<30?U[r]:D[Math.floor(r/10)]+(r%10?' y '+U[r%10]:'')); return s; };
+  const c6 = x => { const m=Math.floor(x/1000), r=x%1000; let s=''; if(m) s = m===1?'mil':apo(c999(m))+' mil'; if(r) s+=(s?' ':'')+c999(r); return s; };
+  const mm=Math.floor(n/1e6), r=n%1e6; let s='';
+  if(mm) s = mm===1?'un millón':apo(c6(mm))+' millones';
+  if(r) s+=(s?' ':'')+c6(r);
+  s = apo(s) + ((mm && !r) ? ' de pesos' : ' pesos');
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+
+/* ---------- cálculos financieros ---------- */
+const pagado = l => (l.pagos||[]).reduce((a,p)=>a+(+p.valor||0),0);
+function planDe(l){
+  let items=[]; const v=l.venta;
+  if(v){
+    if(v.modalidad==='contado') items=[{n:0,label:'Pago total',fecha:v.fechaLimite||v.fecha,valor:+v.precioFinal}];
+    else{
+      items.push({n:0,label:'Cuota inicial',fecha:v.fecha,valor:+v.cuotaInicial});
+      const fin=(+v.precioFinal)-(+v.cuotaInicial), N=Math.max(1,+v.numCuotas||1);
+      const base=Math.floor(fin/N/1000)*1000;
+      for(let i=1;i<=N;i++) items.push({n:i,label:`Cuota ${i} de ${N}`,fecha:addMonths(v.fechaPrimera,i-1),valor:i<N?base:fin-base*(N-1)});
+    }
+  } else if(l.separacion){
+    items=[{n:0,label:'Separación',fecha:l.separacion.fecha,valor:+l.separacion.valor}];
+  }
+  let rest=pagado(l); const t=today();
+  for(const it of items){ const ap=Math.min(rest,it.valor); rest-=ap; it.pagado=ap;
+    it.estado = ap>=it.valor ? 'pagada' : (it.fecha<t ? 'vencida' : ap>0 ? 'parcial' : 'pendiente'); }
+  return items;
+}
+function resumen(l){
+  const items=planDe(l), pag=pagado(l);
+  const total = l.venta ? +l.venta.precioFinal : precioLote(l);
+  const vencido = items.filter(i=>i.estado==='vencida').reduce((a,i)=>a+i.valor-i.pagado,0);
+  const prox = items.find(i=>i.estado!=='pagada');
+  const pv = items.find(i=>i.estado==='vencida');
+  const diasMora = pv ? diffDays(pv.fecha,today()) : 0;
+  const sepVencida = l.estado==='separado' && l.separacion && l.separacion.vence < today();
+  return {items,pagado:pag,total,saldo:Math.max(0,total-pag),vencido,prox,diasMora,sepVencida,alerta:vencido>0||sepVencida};
+}
+function planSugerido(l){
+  const P=S.proyectos[S.pid]||{}; const p=precioLote(l); if(!p) return null;
+  const ci=Math.round(p*(+P.ciPct||30)/100/1e5)*1e5, N=+P.cuotas||24;
+  return {precio:p, ci, N, cuota:Math.floor((p-ci)/N/1000)*1000, sep:+P.sepValor||0, ciPct:+P.ciPct||30};
+}
+
+/* =========================================================
+   Capa de datos: nube (db compartida) o local (demo)
+   ========================================================= */
+const Store = {
+  async setLote(id,data){ if(S.mode==='cloud') return S.db.doc('lotes/'+id).set(data); Local.lotes[id]=structuredClone(data); Local.emit(); },
+  async setProyecto(id,data){ if(S.mode==='cloud') return S.db.doc('proyectos/'+id).set(data); Local.proyectos[id]=structuredClone(data); Local.emit(); },
+  async lock(path){
+    if(S.mode!=='cloud') return;
+    const ref=S.db.doc(path);
+    for(let i=0;i<8;i++){ const r=await ref.acquire({holder:HOLDER,ttlMs:8000}); if(r.acquired) return; await sleep(400+Math.random()*700); }
+    throw new Error('Otra persona está guardando este mismo registro. Intenta de nuevo en unos segundos.');
+  },
+  async mutateLote(id,fn){
+    const b=S.base[id];
+    if(S.mode!=='cloud'){ const src=Local.lotes[id]||b; if(!src) throw new Error('El lote ya no existe.'); const nx=await fn(structuredClone(src)); Local.lotes[id]=nx; Local.emit(); return nx; }
+    await Store.lock('lotes/'+id);
+    const snap=await S.db.doc('lotes/'+id).get();
+    const d=snap.exists?snap.data():null;
+    const cur = d && d.proyecto ? {...(b?structuredClone(b):{}),...structuredClone(d)} : (b?structuredClone(b):null);
+    if(!cur) throw new Error('El lote ya no existe.');
+    const nx=await fn(cur);
+    await S.db.doc('lotes/'+id).set(nx);
+    return nx;
+  },
+  /* comprobantes: cada imagen en su propio documento (no engorda el lote ni se descarga con el plano) */
+  async setComprobante(cid,data){ if(S.mode==='cloud') return S.db.doc('comprobantes/'+cid).set(data); Local.comp[cid]=data; Local.saveComp(); },
+  async getComprobante(cid){ if(S.mode==='cloud'){ const s=await S.db.doc('comprobantes/'+cid).get(); return s.exists?s.data():null; } return Local.comp[cid]||null; },
+  async nextRecibo(){
+    if(S.mode!=='cloud'){ Local.recibo=(Local.recibo||0)+1; Local.save(); return Local.recibo; }
+    await Store.lock('config/recibos');
+    const ref=S.db.doc('config/recibos'); const snap=await ref.get();
+    const n=((snap.exists && +snap.data().ultimo)||0)+1;
+    await ref.set({ultimo:n}); return n;
+  }
+};
+const Local = {
+  proyectos:{}, lotes:{}, recibo:0, comp:{},
+  load(){ try{ const d=JSON.parse(localStorage.getItem('lotecontrol-demo2')||'null'); if(d) Object.assign(this,d); this.comp=JSON.parse(localStorage.getItem('lotecontrol-comp')||'{}'); }catch(e){} },
+  saveComp(){ try{ localStorage.setItem('lotecontrol-comp',JSON.stringify(this.comp)); }catch(e){ toast('Modo local: el navegador no tiene espacio para guardar más comprobantes'); } },
+  save(){ try{ localStorage.setItem('lotecontrol-demo2',JSON.stringify({proyectos:this.proyectos,lotes:this.lotes,recibo:this.recibo})); }catch(e){} },
+
+  emit(){ this.save(); S.proyectos=structuredClone(this.proyectos); S.docs={}; for(const [k,v] of Object.entries(this.lotes)) if(v.proyecto===S.pid) S.docs[k]=structuredClone(v); rebuildLotes(); render(); }
+};
+function hist(l,accion){ l.historial=[{ts:Date.now(),por:S.uid||'local',accion},...(l.historial||[])].slice(0,120); return l; }
+
+/* ---------- arranque ---------- */
+(async function init(){
+  let tries=0; while(!(window.claude && window.claude.use) && tries<15){ await sleep(100); tries++; }
+  let db=null,user=null;
+  if(window.claude && window.claude.use){ try{ [db,user]=await Promise.all([claude.use('db'),claude.use('user')]); }catch(e){} }
+  if(db) startCloud(db,user); else startLocal();
+})();
+function setSync(kind,txt){ $('#sync').className='pill '+kind; $('#syncTxt').textContent=txt; }
+function banner(txt){ const b=$('#banner'); if(!txt){b.classList.add('hidden');return;} b.textContent=txt; b.classList.remove('hidden'); }
+
+async function startCloud(db,user){
+  S.mode='cloud'; S.db=db; S.user=user;
+  try{ S.uid = user ? await user.id() : null; }catch(e){}
+  try{ const w = user ? await user.can('data.write') : null; if(w===false){ S.canWrite=false; banner('Modo consulta: puedes ver toda la información, pero tu usuario no tiene permiso para registrar cambios.'); } }catch(e){}
+  setSync('warn','Conectando…');
+  const timer=setTimeout(()=>{ setSync('warn','Sin conexión'); if(!Object.keys(S.proyectos).length) render(); },10000);
+  db.collection('proyectos').onSnapshot(snap=>{
+    const p={}; snap.docs.forEach(d=>p[d.id]=d.data()); S.proyectos=p;
+    if(!snap.metadata.fromCache){ clearTimeout(timer); setSync('live','En vivo · sincronizado'); }
+    if(!S.pid || !p[S.pid]){ let last=null; try{ last=localStorage.getItem('lotecontrol-pid'); }catch(e){} const ids=Object.keys(p); selectProyecto(p[last]?last:(p.montecarlo?'montecarlo':ids[0]||null)); }
+    else { applyTheme(); render(); }
+  }, err=>{ clearTimeout(timer); setSync('warn','Error de conexión'); banner('No se pudo leer la base de datos ('+err.code+'). Recarga la página más tarde.'); render(); });
+}
+function startLocal(){
+  S.mode='local'; S.uid='local';
+  Local.load();
+  if(!Local.proyectos.demo) demoLocal();
+  if(!Local.proyectos.montecarlo) Local.proyectos.montecarlo={nombre:'Condominio Campestre Montecarlo',ubicacion:'Acacías, Meta',plano:'plano-montecarlo.json',tema:'montecarlo',valorM2:0,sepValor:500000,sepDias:15,ciPct:20,cuotas:24,creado:Date.now()};
+  setSync('warn','Modo local');
+  S.proyectos=structuredClone(Local.proyectos);
+  let last=null; try{ last=localStorage.getItem('lotecontrol-pid'); }catch(e){}
+  selectProyecto(S.proyectos[last]?last:'montecarlo');
+}
+
+function applyTheme(){
+  const P=S.proyectos[S.pid]||{}; const T=TEMAS[P.tema]||null; const root=document.documentElement;
+  Object.values(TEMAS).forEach(t=>Object.keys(t).forEach(k=>{ if(k.startsWith('--')) root.style.removeProperty(k); }));
+  if(T) Object.entries(T).forEach(([k,v])=>{ if(k.startsWith('--')) root.style.setProperty(k,v); });
+  Object.values(TEMAS).forEach(t=>t.cls&&root.classList.remove(t.cls)); if(T?.cls) root.classList.add(T.cls);
+  Object.keys(ESTADOS).forEach(k=>{ ESTADOS[k].color = (T?.estados?.[k]) || ESTADOS_BASE[k]; });
+  const mk=$('#brandMark');
+  if(T?.logo){ if(!mk.querySelector('img')){ mk.outerHTML=`<img id="brandMark" src="${T.logo}" alt="${esc(P.nombre||'')}">`; } }
+  else { if(mk.tagName==='IMG') mk.outerHTML='<div class="mark" id="brandMark"></div>'; $('#brandMark').textContent = P.nombre? P.nombre.replace(/condominio|campestre/ig,'').trim().slice(0,2).toUpperCase() : 'LC'; }
+  $('#brandName').textContent = P.nombre ? P.nombre.replace(/^Condominio Campestre\s*/i,'') : 'LoteControl';
+  $('#brandSub').textContent = T?.sub || (P.ubicacion || 'Gestión de lotes');
+  document.title = (P.nombre||'LoteControl')+' · Gestión de lotes';
+  window.P3 && window.P3.theme && window.P3.theme();
+}
+
+async function selectProyecto(pid){
+  S.pid=pid; S.sel=null; S.lotes={}; S.docs={}; S.base={}; S.zoom=1; S.sector=null; S._pqq=null;
+  try{ if(pid) localStorage.setItem('lotecontrol-pid',pid); }catch(e){}
+  if(S.unsubLotes){ S.unsubLotes(); S.unsubLotes=null; }
+  applyTheme();
+  if(!pid){ render(); return; }
+  const P=S.proyectos[pid];
+  if(!P?.plano && S.view==='3d') S.view='plano';   // sin plano real no hay vista 3D
+  if(P && P.plano){
+    render();
+    try{ await loadGeo(P.plano); }catch(e){ banner('No se pudo cargar el plano de este proyecto. Recarga la página.'); }
+    if(S.pid!==pid) return;
+  }
+  if(S.mode==='cloud'){
+    rebuildLotes();
+    S.unsubLotes = S.db.collection('lotes').where('proyecto','==',pid).onSnapshot(snap=>{
+      const m={}; snap.docs.forEach(d=>{ const v=d.data(); if(v && v.proyecto) m[d.id]=v; }); S.docs=m; rebuildLotes(); render();
+    }, err=>toast('Error leyendo lotes: '+err.code));
+  } else { Local.emit(); return; }
+  render();
+}
+
+/* ---------- generador de proyecto (sin plano) ---------- */
+function generarLotes(pid,cfg){
+  const out=[]; const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for(let m=0;m<cfg.manzanas;m++){
+    const mz=letters[m]||('M'+(m+1));
+    for(let n=1;n<=cfg.porManzana;n++){
+      const k=Math.ceil(cfg.porManzana/2); const esq = n===1||n===k||n===k+1||n===cfg.porManzana;
+      out.push({id:`${pid}-${mz}${pad(n,2)}`,data:{proyecto:pid,manzana:mz,numero:n,area:+cfg.area,frente:+cfg.frente,fondo:+cfg.fondo,
+        precio:Math.round(+cfg.precio*(esq?1.08:1)/1e5)*1e5,esquinero:esq,ubic:esq?'esquinero':'intermedio',estado:'disponible',
+        cliente:null,separacion:null,venta:null,pagos:[],historial:[{ts:Date.now(),por:S.uid||'local',accion:'Lote creado'}]}});
+    }
+  }
+  return out;
+}
+function demoLocal(){
+  Local.proyectos.demo={nombre:'Proyecto de demostración',ubicacion:'Meta, Colombia',porFila:3,sepValor:1000000,sepDias:15,ciPct:30,cuotas:24,creado:Date.now()};
+  generarLotes('demo',{manzanas:4,porManzana:12,area:1000,frente:20,fondo:50,precio:45000000}).forEach(({id,data})=>Local.lotes[id]=data);
+}
+
+/* =========================================================
+   Render
+   ========================================================= */
+const mzCmp=(a,b)=>String(a).localeCompare(String(b),'es',{numeric:true});
+function lotesArr(){ return Object.entries(S.lotes).map(([id,l])=>({id,...l})).sort((a,b)=>mzCmp(a.manzana,b.manzana)||a.numero-b.numero); }
+function matches(l){
+  const grp = isVend(l.estado)?'vendido':l.estado;
+  if(S.ocultos.has(grp)) return false;
+  if(S.soloMora && !((l.venta||l.separacion)&&resumen(l).alerta)) return false;
+  if(S.ubic){ if(S.ubic==='comercial'){ if(!l.comercial) return false; } else if((l.ubic||(l.esquinero?'esquinero':'intermedio'))!==S.ubic) return false; }
+  if(S.pmax && precioLote(l)>S.pmax) return false;
+  const pq=pqActual(); if(!pq) return true;
+  return qMatch(l,pq);
+}
+/* la búsqueda se interpreta una sola vez por texto, no una vez por cada uno de los 2.291 lotes */
+function pqActual(){ if(S._pqq!==S.q){ S._pqq=S.q; S._pq=parseQ(S.q); } return S._pq; }
+/* ---------- buscador flexible ----------
+   Entiende frases y las combina: "lote 5", "lotes 5 disponibles", "mz 105", "manzana 105 lote 3", "105-3",
+   "esquineros disponibles", "comercial", "sector norte", "vendidos en mora", nombres, cédulas o teléfonos.
+   Acepta palabras a medio escribir ("esq", "disp"), mayúsculas, tildes y plurales. */
+const norm = s => String(s??'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const PALABRAS = [ // [palabra, tipo, valor]
+  ['disponible','est','disponible'],['libre','est','disponible'],['separado','est','separado'],['apartado','est','separado'],['reservado','est','separado'],
+  ['vendido','est','vendido'],['cuotas','est','cuotas'],['contado','est','contado'],['bloqueado','est','bloqueado'],
+  ['mora','mora',1],['atrasado','mora',1],['vencido','mora',1],
+  ['esquinero','ubic','esquinero'],['esquina','ubic','esquinero'],['intermedio','ubic','intermedio'],['comercial','ubic','comercial'],['local','ubic','comercial'],
+];
+const RELLENO = new Set(['de','del','la','el','los','las','en','y','con','que','sector','sectores','frente']);
+function parseQ(q){
+  q=norm(q).trim(); if(!q) return null;
+  const c={raw:q, est:new Set(), texto:[]};
+  // "105-3", "105 / 3"
+  let m=q.match(/^([a-z]*\d+[a-z]*)\s*[-/]\s*(\d+)$/); if(m) return {...c, mz:m[1], lote:+m[2]};
+  if(/doble\s*frente/.test(q)){ c.ubic='doble frente'; q=q.replace(/doble\s*frente/,' '); }
+  // separa "mz105" → "mz 105", "l5" → "l 5"
+  const t=q.replace(/\b(mz|manzana|m|lote|lotes|lt|l)(\d)/g,'$1 $2').split(/[\s,]+/).filter(Boolean);
+  const g=curGeo(); const sectores=(g?.sectores||[]).map(s=>({id:s.id,n:norm(s.nombre.replace(/^Sector\s*/i,''))}));
+  for(let i=0;i<t.length;i++){
+    const w=t[i], nx=t[i+1];
+    if(/^(mz|manzana|manzanas|m)$/.test(w) && nx && /^[a-z]*\d+[a-z]*$|^sn\d+$/.test(nx)){ c.mz=nx; i++; continue; }
+    if(/^(lote|lotes|lt|l)$/.test(w) && nx && /^\d+$/.test(nx)){ c.lote=+nx; i++; continue; }
+    if(/^(lote|lotes|lt|mz|manzana|manzanas)$/.test(w)) { c.pend=w; continue; }   // palabra clave aún sin número
+    if(/^\d+$/.test(w)){ if(c.lote==null && c.mz==null && c.num==null) c.num=+w; else c.texto.push(w); continue; }
+    if(/^sn\d+$/.test(w)){ c.mz=w; continue; }
+    if(RELLENO.has(w)) continue;
+    const formas=[w, w.replace(/s$/,''), w.replace(/es$/,'')];   // plurales: "disponibles", "comerciales", "esquineros"
+    const kw = w.length>=3 && PALABRAS.find(([p])=>formas.includes(p)||p.startsWith(w));
+    if(kw){ if(kw[1]==='est') c.est.add(kw[2]); else if(kw[1]==='ubic') c.ubic=kw[2]; else c.mora=true; continue; }
+    const sec = w.length>=3 && sectores.find(s=>s.n===w||s.n.startsWith(w));
+    if(sec){ c.sector=sec.id; continue; }
+    c.texto.push(w);
+  }
+  return c;
+}
+function qMatch(l,c){
+  const mz=norm(l.manzana);
+  if(c.mz!=null && mz!==c.mz) return false;
+  if(c.lote!=null && l.numero!==c.lote) return false;
+  if(c.num!=null && !(l.numero===c.num || mz===String(c.num) || (l.cliente&&(String(l.cliente.cedula||'').includes(c.num)||String(l.cliente.telefono||'').includes(c.num))))) return false;
+  if(c.est.size){ const ok=[...c.est].some(e=>e==='vendido'?isVend(l.estado):l.estado===e); if(!ok) return false; }
+  if(c.mora && !((l.venta||l.separacion)&&resumen(l).alerta)) return false;
+  if(c.ubic){ if(c.ubic==='comercial'){ if(!l.comercial) return false; } else if((l.ubic||(l.esquinero?'esquinero':'intermedio'))!==c.ubic) return false; }
+  if(c.sector!=null && l.sector!==c.sector) return false;
+  if(c.texto.length){ const hay=norm([l.cliente?.nombre,l.cliente?.cedula,l.cliente?.telefono,l.cliente?.correo,'mz '+l.manzana].join(' ')); if(!c.texto.every(w=>hay.includes(w))) return false; }
+  return true;
+}
+/* resumen legible de lo que entendió el buscador, para el encabezado de la lista */
+function describirQ(c){
+  const p=[];
+  if(c.lote!=null) p.push('Lote '+c.lote); if(c.mz!=null) p.push('Manzana '+mzName(c.mz.toUpperCase()));
+  if(c.num!=null) p.push('“'+c.num+'”');
+  c.est.forEach(e=>p.push(ESTADOS[e]?.label||e)); if(c.mora) p.push('En mora');
+  if(c.ubic) p.push(UBICS[c.ubic]||c.ubic);
+  if(c.sector!=null){ const s=(curGeo()?.sectores||[]).find(s=>s.id===c.sector); if(s) p.push(s.nombre); }
+  if(c.texto.length) p.push('“'+c.texto.join(' ')+'”');
+  return p.join(' · ');
+}
+
+function render(){
+  renderSide();
+  const app=$('#app');
+  if(S.mode==='loading') return;
+  if(!S.pid){
+    app.innerHTML=`<div class="card empty"><h2 class="t-title">Aún no hay proyectos</h2><p class="muted">Crea el primer proyecto: el sistema genera las manzanas y los lotes automáticamente.</p>
+      <button class="btn primary" onclick="modalProyecto()" ${S.canWrite?'':'disabled'}>+ Crear proyecto</button></div>`;
+    return;
+  }
+  const L=lotesArr(); const P=S.proyectos[S.pid]||{};
+  const sc=document.querySelector('.plano-scroll, .tbl-wrap'); const sx=sc?.scrollLeft||0, sy=sc?.scrollTop||0;
+  const dScroll=document.querySelector('.drawer')?.scrollTop||0;
+  const qFocus=document.activeElement && document.activeElement.id==='q' ? document.activeElement.selectionStart : null;
+  const hasSel=S.sel&&S.lotes[S.sel];
+  const T=TEMAS[P.tema];
+  const head = `<div class="head"><div><div class="eyebrow">${esc([T?.sub,P.ubicacion].filter(Boolean).join(' · ')||'Proyecto')}</div><h1 class="t-title">${esc(T?.titulo||P.nombre)}</h1></div><div class="spacer"></div>${secChartHTML(L)}</div>`;
+  app.innerHTML = head
+    + kpisHTML(L) + toolbarHTML(L)
+    + `<div class="work ${hasSel?'with-drawer':''}"><div class="card" id="view">${viewHTML(L)}</div>${hasSel?drawerHTML(S.sel):''}</div>`;
+  const ns=document.querySelector('.plano-scroll, .tbl-wrap'); if(ns){ ns.scrollLeft=sx; ns.scrollTop=sy; }
+  const dr=document.querySelector('.drawer'); if(dr) dr.scrollTop=dScroll;
+  if(qFocus!==null){ const n=$('#q'); n.focus(); n.setSelectionRange(qFocus,qFocus); }
+  // el plano ocupa exactamente el alto que queda en pantalla
+  const vw=document.getElementById('view'); if(vw){ const top=vw.getBoundingClientRect().top+window.scrollY; document.documentElement.style.setProperty('--vh-plano',Math.max(480,innerHeight-top-24)+'px'); }
+  bindView();
+  if(qFocus!==null) updateSugg();
+  mount3D();
+  fillNames();
+}
+
+function renderSide(){
+  const sel=$('#selProyecto'); const ids=Object.keys(S.proyectos);
+  sel.innerHTML = ids.length ? ids.map(id=>`<option value="${esc(id)}" ${id===S.pid?'selected':''}>${esc(S.proyectos[id].nombre)}</option>`).join('') : '<option>Sin proyectos</option>';
+  sel.disabled=!ids.length;
+  const has3d=!!(S.proyectos[S.pid]||{}).plano;
+  document.querySelectorAll('#nav [data-view]').forEach(b=>{ b.classList.toggle('on',b.dataset.view===S.view); b.classList.toggle('hidden',b.dataset.view==='3d'&&!has3d); });
+  $('#btnNuevoProyecto').disabled=!S.canWrite || S.mode==='loading';
+  $('#btnAjustes').disabled=!S.canWrite || !S.pid;
+}
+$('#selProyecto').onchange=e=>selectProyecto(e.target.value);
+$('#btnNuevoProyecto').onclick=()=>modalProyecto();
+$('#btnAjustes').onclick=()=>modalAjustes();
+document.querySelectorAll('#nav [data-view]').forEach(b=>b.onclick=()=>{ stopTour(); S.view=b.dataset.view; render(); });
+/* barra lateral plegable (se recuerda en este equipo) */
+try{ if(localStorage.getItem('lotecontrol-mini')==='1') document.documentElement.classList.add('side-mini'); }catch(e){}
+$('#sideToggle').onclick=()=>{ const on=document.documentElement.classList.toggle('side-mini'); try{ localStorage.setItem('lotecontrol-mini',on?'1':'0'); }catch(e){} setTimeout(()=>{ if(S.view!=='3d') render(); },280); };
+
+function kpisHTML(L){
+  const c=k=>L.filter(l=>l.estado===k).length;
+  const vend=L.filter(l=>isVend(l.estado)); const conPlan=L.filter(l=>l.venta);
+  const ventas=conPlan.reduce((a,l)=>a+(+l.venta.precioFinal),0);
+  const rec=L.reduce((a,l)=>a+pagado(l),0);
+  const porCobrar=conPlan.reduce((a,l)=>a+Math.max(0,l.venta.precioFinal-pagado(l)),0);
+  let mora=0,nMora=0; conPlan.forEach(l=>{ const r=resumen(l); if(r.vencido>0){mora+=r.vencido;nMora++;} });
+  const disp=L.filter(l=>l.estado==='disponible'); const inv=disp.reduce((a,l)=>a+precioLote(l),0);
+  const pct=L.length?Math.round(vend.length/L.length*100):0;
+  const k=(label,val,sub,color,acc)=>`<div class="kpi"><div class="l">${color?`<span class="sw" style="background:${color}"></span>`:''}${label}</div><div class="v ${acc?'acc':''}">${val}</div><div class="s">${sub||'&nbsp;'}</div></div>`;
+  return `<div class="kpis">
+    ${k('Lotes',fmtN(L.length),`${pct}% vendido`)}
+    ${k('Disponibles',fmtN(disp.length),inv?'Inventario '+fmtM(inv):'Sin precios cargados',ESTADOS.disponible.color)}
+    ${k('Separados',c('separado'),`${L.filter(l=>resumen(l).sepVencida).length} vencidas`,ESTADOS.separado.color)}
+    ${k('Vendidos',fmtN(vend.length),`${conPlan.length} con plan de pagos`,ESTADOS.vendido.color)}
+    ${k('Recaudado',fmtM(rec),'Separaciones y abonos',null,true)}
+    ${k('Por cobrar',fmtM(porCobrar),ventas?'De '+fmtM(ventas)+' vendidos':'Ventas registradas')}
+    ${k('En mora',fmtM(mora),`${nMora} cliente${nMora===1?'':'s'}`,MORA)}
+  </div>`;
+}
+
+/* gráfica de avance de ventas por sector (2b) */
+function secChartHTML(L){
+  const g=curGeo(); if(!g||!g.sectores||S.view==='tabla'||S.view==='cartera') return '';
+  const cols=g.sectores.map(s=>{ const ls=L.filter(l=>l.sector===s.id); const v=ls.filter(l=>isVend(l.estado)).length; const p=ls.length?Math.round(v/ls.length*100):0;
+    return `<div class="col ${S.sector===s.id?'on':''}" data-sector="${s.id}" title="${esc(s.nombre)}: ${v} de ${ls.length} vendidos · ${ls.length-v} disponibles"><div class="pc">${p}%</div><div class="bar2"><i style="height:${p}%"></i></div><div class="nm">${esc(s.nombre.replace(/^Sector\s*/,''))}</div></div>`; }).join('');
+  return `<div class="secchart"><div class="ttl">% vendido</div>${cols}</div>`;
+}
+function toolbarHTML(L){
+  const cnt=f=>fmtN(L.filter(f).length);
+  const lg=c=>`<span class="lg" style="${c?`box-shadow:inset 0 0 0 2px ${c}`:''}"></span>`;
+  const chips=`<span class="chip ${S.ocultos.has('disponible')?'off':''}" data-est="disponible" title="Mostrar u ocultar">${lg('')}Disponible <b>${cnt(l=>l.estado==='disponible')}</b></span>`
+    +`<span class="chip ${S.ocultos.has('separado')?'off':''}" data-est="separado">${lg(RING.separado)}Separado <b>${cnt(l=>l.estado==='separado')}</b></span>`
+    +`<span class="chip ${S.ocultos.has('vendido')?'off':''}" data-est="vendido">${lg(RING.vendido)}Vendido <b>${cnt(l=>isVend(l.estado))}</b></span>`
+    +`<span class="chip ${S.soloMora?'':'off'}" data-mora="1" title="Ver solo los lotes en mora">${lg(MORA)}En mora <b>${cnt(l=>(l.venta||l.separacion)&&resumen(l).alerta)}</b></span>`;
+  const precios=[0,20e6,30e6,40e6,60e6,80e6];
+  return `<div class="toolbar">
+    <div class="sbox"><input class="search" id="q" autocomplete="off" placeholder="Buscar: lote 5, mz 105, esquinero, cliente…" value="${esc(S.q)}">${S.q?'<button class="sclear" id="qClear" title="Limpiar búsqueda">×</button>':''}<div class="sugg hidden" id="sugg"></div></div>
+    <select class="sel" id="fUbic">${Object.entries(UBICS).map(([k,t])=>`<option value="${k}" ${S.ubic===k?'selected':''}>${t}</option>`).join('')}</select>
+    <select class="sel" id="fPrecio">${precios.map(p=>`<option value="${p}" ${S.pmax===p?'selected':''}>${p?'Hasta '+fmtM(p):'Cualquier precio'}</option>`).join('')}</select>
+    ${filtrosActivos()?'<button class="btn sm ghost" id="limpiar" title="Quitar búsqueda, filtros y sector">Limpiar</button>':''}
+    <div class="chips">${chips}</div>
+  </div>`;
+}
+
+function viewHTML(L){
+  if(!L.length) return `<div class="empty"><h2 class="t-title">${curGeo()===null&&S.proyectos[S.pid]?.plano?'Cargando plano…':'Cargando lotes…'}</h2></div>`;
+  if(S.view==='tabla') return tablaHTML(L);
+  if(S.view==='cartera') return carteraHTML(L);
+  if(S.view==='3d' && curGeo()) return v3dHTML(L);
+  return planoHTML(L);
+}
+
+/* --- 3D --- */
+function v3dHTML(L){
+  const g=curGeo(); const secs=g.sectores||[];
+  const dispSec=k=>L.filter(l=>l.sector===k&&l.estado==='disponible').length;
+  return `<div class="v3d" id="v3d">
+    <div class="loading3" id="load3"><div class="splash">${TEMAS[S.proyectos[S.pid]?.tema]?.logo?`<img src="${TEMAS[S.proyectos[S.pid].tema].logo}" alt="">`:''}<span>Preparando el plano 3D…</span></div></div>
+    <div class="ov3 tl">
+      <span class="sector ${S.sector===null?'on':''}" data-sector="all">Todo el proyecto <small>${fmtN(L.filter(l=>l.estado==='disponible').length)} disp.</small></span>
+      ${secs.map(s=>`<span class="sector ${S.sector===s.id?'on':''}" data-sector="${s.id}">${esc(s.nombre)} <small>${dispSec(s.id)} disp.</small></span>`).join('')}
+    </div>
+    <div class="ov3 tr"><button class="btn sm tour ${S.tour?'on':''}" id="btnTour" title="Recorrido automático por los sectores, ideal para presentar">${S.tour?'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" fill="currentColor"/></svg>Detener recorrido':'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>Recorrido'}</button><div class="seg3"><button data-cam="3d" class="${S.cam==='3d'?'on':''}">3D</button><button data-cam="top" class="${S.cam==='top'?'on':''}">Superior</button></div><button class="btn sm" data-cam="reset">Recentrar</button></div>
+    <div class="tourcap ${S.tourCap?'on':''}" id="tourcap">${S.tourCap?`<div class="t1">${esc(S.tourCap.t1)}</div><div class="t2">${esc(S.tourCap.t2)}</div>`:''}</div>
+    <div class="ov3 bl" style="justify-content:flex-start;right:290px"><div class="hint3">Arrastra para moverte · clic derecho para girar · rueda o doble clic para acercar</div></div>
+    <div class="escs" role="group" aria-label="Fondo del plano"><span>Fondo</span>${[['nocturno','Nocturno','#1d1a17,#0d0c0b'],['atardecer','Atardecer','#2c2a3d,#c98a5c'],['dia','Campo de día','#8fb6d3,#6f8350'],['maqueta','Maqueta blanca','#FFFFFF,#DCDCE1']].map(([k,t,g])=>`<button data-esc="${k}" title="${t}" aria-label="Fondo ${t}" style="background:linear-gradient(160deg,${g})"></button>`).join('')}</div>
+    <div class="navctl" role="group" aria-label="Controles del plano">
+      <button data-nav="in" title="Acercar (+)" aria-label="Acercar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button data-nav="out" title="Alejar (−)" aria-label="Alejar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></button>
+      <button data-nav="north" class="cmp" title="Volver al norte" aria-label="Volver al norte"><svg class="cmp-needle" viewBox="0 0 24 24"><path d="M12 3 15 12H9z" fill="#E4002B"/><path d="M12 21 9 12h6z" fill="currentColor" opacity=".55"/></svg></button>
+      <button data-nav="fit" title="Ver todo el proyecto" aria-label="Ver todo el proyecto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+  </div>`;
+}
+let LOTC='#FFFFFF';
+function paint3D(id,i,x){
+  const l=S.lotes[id]; if(!l) return {c:'#333',dim:0.8};
+  let dim;
+  if(S.isolate){ // aislamiento parcial mientras se registra una operación
+    dim = id===S.isolate ? 0 : (l.manzana===S.lotes[S.isolate]?.manzana ? 0.5 : 0.86);
+  } else {
+    const inSec = S.sector===null || x.s===S.sector;
+    dim = (!matches(l) || !inSec) ? 0.8 : 0;
+  }
+  return {c:LOTC, dim, ring: ringDe(l), low: isVend(l.estado)};
+}
+/* recorrido automático por sectores (4g) */
+function startTour(){
+  const g=curGeo(); if(!g||!window.P3) return; stopTour(); S.tour=true; S.sel=null;
+  const secs=g.sectores||[]; let k=0;
+  const step=()=>{
+    if(!S.tour) return;
+    if(k>=secs.length){ S.sector=null; S.tourCap={t1:S.proyectos[S.pid]?.nombre?.replace(/^Condominio Campestre\s*/i,'')||'Proyecto',t2:`${fmtN(lotesArr().filter(l=>l.estado==='disponible').length)} lotes disponibles`}; render(); window.P3.flyToSector(null,2600);
+      S._tt=setTimeout(()=>{ S.tour=false; S.tourCap=null; render(); },4200); return; }
+    const s=secs[k++]; const L=lotesArr().filter(l=>l.sector===s.id); const d=L.filter(l=>l.estado==='disponible');
+    const desde=d.length?Math.min(...d.map(precioLote).filter(Boolean)):0;
+    S.sector=s.id; S.tourCap={t1:s.nombre,t2:`${d.length} disponibles${desde?' · desde '+fmtM(desde):''}`}; render(); window.P3.flyToSector(s.id,2600);
+    S._tt=setTimeout(step,5200);
+  };
+  step();
+}
+function stopTour(){ if(!S.tour&&!S._tt) return; clearTimeout(S._tt); S._tt=null; if(S.tour){ S.tour=false; S.tourCap=null; } }
+function mount3D(){
+  const el=document.getElementById('v3d');
+  if(!el){ window.P3 && window.P3.pause(); return; }
+  if(!window.P3){ if(!S._p3wait){ S._p3wait=true; window.addEventListener('p3ready',()=>render(),{once:true}); } return; }
+  const g=curGeo(); LOTC=lotColor();
+  window.P3.mount(el,g,S.pid,{
+    paint:paint3D,
+    hover:(id,ev)=>{ if(!S.isolate) showTip(id,ev); },
+    click:id=>{ if(S.isolate) return; if(S.tour){ stopTour(); } S.sel=id; render(); },
+    dbl:id=>{ if(S.isolate) return; stopTour(); selectLote(id); },
+    user:()=>{ if(S.tour){ stopTour(); render(); } },
+  });
+  window.P3.select(S.sel);
+}
+/* recuadro al pasar el mouse: 140 ms de espera la primera vez (evita apariciones accidentales)
+   y respuesta inmediata mientras se recorren lotes vecinos */
+let _tipT=null, _tipEv=null, _tipId=null;
+function showTip(id,ev){
+  const tip=$('#tip');
+  if(!id){ clearTimeout(_tipT); _tipT=null; _tipId=null; tip.classList.add('hidden'); return; }
+  _tipEv={clientX:ev.clientX,clientY:ev.clientY}; _tipId=id;
+  if(tip.classList.contains('hidden')){ if(!_tipT) _tipT=setTimeout(()=>{ _tipT=null; if(_tipId) drawTip(_tipId,_tipEv); },140); return; }
+  drawTip(id,_tipEv);
+}
+function drawTip(id,ev){
+  const tip=$('#tip');
+  const l=S.lotes[id]; if(!l) return; const r=resumen(l);
+  tip.innerHTML=`<b>${esc(loteName(l))}</b> · <span class="muted">${ESTADOS[l.estado].label}</span><div class="tp">${l.venta?fmt(l.venta.precioFinal):fmtP(l)}</div><span class="muted">${fmtN(l.area,2)} m²${ubicTxt(l)?' · '+esc(ubicTxt(l)):''}</span>${l.cliente?`<br>${esc(l.cliente.nombre)}`:''}${l.venta?`<br>Saldo ${fmt(r.saldo)}`:''}${r.vencido?`<br><b style="color:${MORA}">Vencido ${fmt(r.vencido)}</b>`:''}`;
+  tip.classList.remove('hidden'); tip.style.left=Math.min(ev.clientX+16,innerWidth-265)+'px'; tip.style.top=Math.min(ev.clientY+16,innerHeight-150)+'px';
+}
+
+/* --- plano 2D --- */
+function plFit(gw,gh){
+  const mw=document.getElementById('app').clientWidth-52;
+  const cw=(S.sel&&S.lotes[S.sel]&&innerWidth>1100 ? mw-414 : mw)-4;
+  const ch=(parseInt(getComputedStyle(document.documentElement).getPropertyValue('--vh-plano'))||Math.max(460,innerHeight-266))-8;
+  return Math.min(cw, ch*gw/gh);
+}
+function plWrap(svg,extra=''){
+  return `<div class="plano-wrap"><div class="plano-tools"><button class="btn sm" data-zoom="-1">−</button><button class="btn sm" data-zoom="0">Ajustar</button><button class="btn sm" data-zoom="1">+</button></div>
+    <div class="plano-scroll">${svg}</div>${extra}</div>`;
+}
+/* minimapa (5b): se muestra al acercar, marca la zona visible y permite saltar */
+function miniHTML(g){
+  if(S.zoom<=1.05) return '';
+  if(!g.mini){ const P=r=>'M'+r.map(q=>q[0]+','+q[1]).join('L')+'Z';
+    g.mini=`${g.sitio?`<path class="mm-site" d="${P(g.sitio)}"/>`:''}<path class="mm-road" fill-rule="evenodd" d="${g.viasPath}"/><path class="mm-lots" d="${g.lotes.map(x=>P(x.p)).join('')}"/>`; }
+  return `<div class="minimap" id="minimap" title="Clic para ir a esa zona"><svg viewBox="0 0 ${g.w} ${g.h}">${g.mini}<rect class="mm-view" id="mmView" x="0" y="0" width="0" height="0" rx="8"/></svg></div>`;
+}
+function cotas2D(x,g,w){
+  const md=medidasLote(x,g); const u=g.w/w; // unidades por píxel en pantalla
+  const off=6*u, fs=10.5*u; let s='';
+  md.edges.forEach(e=>{ const ax=e.a[0]+e.nx*off, ay=e.a[1]+e.ny*off, bx=e.b[0]+e.nx*off, by=e.b[1]+e.ny*off;
+    s+=`<line class="cota" x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" style="stroke-width:${u}"/>`;
+    s+=`<text class="cotat" x="${e.mx+e.nx*(off+fs*1.1)}" y="${e.my+e.ny*(off+fs*1.1)+fs*.35}" style="font-size:${fs}px;stroke-width:${fs*.32}px">${fmtMts(e.m)}</text>`; });
+  return s;
+}
+function planoRealHTML(g){
+  const w=Math.round(plFit(g.w,g.h)*S.zoom), h=Math.round(w*g.h/g.w);
+  if(g.sitio && !g.paisaje2d){
+    const P=r=>'M'+r.map(q=>q[0]+','+q[1]).join('L')+'Z';
+    g.paisaje2d=`<path class="sitio" d="${P(g.sitio)}"/>`+(g.verdes||[]).map(r=>`<path class="verde" d="${P(r)}"/>`).join('')
+      +`<g class="arb">${(g.arboles||[]).map(t=>`<circle cx="${t[0]}" cy="${t[1]}" r="${(2.6*t[2]).toFixed(1)}"/>`).join('')}</g>`;
+  }
+  let s=(g.paisaje2d||'')+`<path class="street" fill-rule="evenodd" d="${g.viasPath}"/>`, al='', nums='', sel='';
+  for(const x of g.lotes){
+    const id=`${S.pid}-${x.mz}-${x.n}`; const l=S.lotes[id]; if(!l) continue;
+    const on= S.isolate ? (id===S.isolate || l.manzana===S.lotes[S.isolate]?.manzana) : (matches(l) && (S.sector===null||x.s===S.sector));
+    s+=`<polygon class="lot${on?'':' dim'}" data-id="${esc(id)}" points="${x.pts}"/>`;
+    const rc=ringDe(l); if(rc) al+=`<polygon class="ring${on?'':' dim'}" points="${x.ipts}" style="stroke:${rc};fill:${rc}"/>`;
+    if(S.zoom>=2.5) nums+=`<text class="ltxt" x="${x.cx}" y="${x.cy+1.2}">${x.n}</text>`;
+    if(S.sel===id) sel=`<polygon class="selo" points="${x.pts}"/>`+cotas2D(x,g,w);
+  }
+  const fs=Math.min(20,Math.max(7,12*g.w/w));
+  const mz=g.manzanas.map(m=>`<text class="mzl" x="${m.x}" y="${m.y+fs*.35}" style="font-size:${fs.toFixed(1)}px;stroke-width:${(fs*.3).toFixed(1)}px">${esc(m.t)}</text>`).join('');
+  return plWrap(`<svg class="plano real" viewBox="0 0 ${g.w} ${g.h}" width="${w}" height="${h}">${s}${nums}${al}${mz}${sel}</svg>`, miniHTML(g));
+}
+function planoHTML(L){
+  const P=S.proyectos[S.pid]||{}; const porFila=+P.porFila||3;
+  if(P.plano){ const g=curGeo(); return g ? planoRealHTML(g) : `<div class="empty"><h2 class="t-title">Cargando plano…</h2></div>`; }
+  const W=44,H=60,ST=40,M=40;
+  const mzs={}; L.forEach(l=>(mzs[l.manzana]=mzs[l.manzana]||[]).push(l));
+  const keys=Object.keys(mzs).sort(mzCmp);
+  const maxK=Math.max(...keys.map(k=>Math.ceil(mzs[k].length/2)));
+  const bw=maxK*W, bh=2*H, cols=Math.min(porFila,keys.length), rows=Math.ceil(keys.length/cols);
+  const totalW=M*2+cols*bw+(cols-1)*ST, totalH=M*2+rows*bh+(rows-1)*ST+16*rows;
+  let s='', labels='';
+  for(let c=1;c<cols;c++){ const x=M+c*bw+(c-1)*ST; s+=`<rect class="street" x="${x}" y="0" width="${ST}" height="${totalH}"/>`; labels+=`<text class="stxt" transform="translate(${x+ST/2+4},${M+bh/2+16}) rotate(-90)" text-anchor="middle">CARRERA ${c}</text>`; }
+  for(let r=1;r<rows;r++){ const y=M+r*(bh+16)+(r-1)*ST; s+=`<rect class="street" x="0" y="${y}" width="${totalW}" height="${ST}"/>`; labels+=`<text class="stxt" x="${M+bw/2}" y="${y+ST/2+4}" text-anchor="middle">CALLE ${r}</text>`; }
+  s+=`<rect class="street" x="0" y="0" width="${totalW}" height="${M-14}"/><text class="stxt" x="${totalW/2}" y="${(M-14)/2+4}" text-anchor="middle">VÍA PRINCIPAL</text>`+labels;
+  keys.forEach((k,i)=>{
+    const c=i%cols, r=Math.floor(i/cols); const x0=M+c*(bw+ST), y0=M+r*(bh+16+ST)+16;
+    const list=mzs[k].sort((a,b)=>a.numero-b.numero); const kk=Math.ceil(list.length/2);
+    s+=`<text class="mz" x="${x0}" y="${y0-5}">MANZANA ${esc(k)}</text>`;
+    list.forEach((l,j)=>{ const top=j<kk; const col=top? j : (list.length-1-j); const x=x0+col*W, y=y0+(top?0:H);
+      const r2=resumen(l); const on=matches(l);
+      s+=`<rect class="lot ${on?'':'dim'} ${S.sel===l.id?'sel':''}" data-id="${esc(l.id)}" x="${x+1}" y="${y+1}" width="${W-2}" height="${H-2}" rx="4" style="fill:var(--lot)"/>`;
+      s+=`<text class="ltxt" x="${x+W/2}" y="${y+H/2+4}">${pad(l.numero,2)}</text>`;
+      const rc=ringDe(l); if(rc) s+=`<rect class="ring g${on?'':' dim'}" x="${x+5}" y="${y+5}" width="${W-10}" height="${H-10}" rx="3" style="stroke:${rc};fill:${rc}"/>`; });
+  });
+  const w=Math.round(plFit(totalW,totalH*0.6)*S.zoom);
+  return plWrap(`<svg class="plano" viewBox="0 0 ${totalW} ${totalH}" width="${w}" height="${Math.round(w*totalH/totalW)}">${s}</svg>`);
+}
+
+/* --- inventario --- */
+function tablaHTML(L){
+  const all=L.filter(l=>matches(l)&&(S.sector===null||l.sector===undefined||l.sector===S.sector)).map(l=>{ const r=resumen(l); return {l,r,lote:(isNaN(+l.manzana)?'Z'+l.manzana:pad(l.manzana,5))+pad(l.numero,3),area:+l.area,precio:l.venta?+l.venta.precioFinal:precioLote(l),ubic:ubicTxt(l),estado:l.estado,cliente:l.cliente?.nombre||'',pag:r.pagado,saldo:l.venta?r.saldo:0,mora:r.vencido}; });
+  const {k,d}=S.sort; all.sort((a,b)=>(a[k]>b[k]?1:a[k]<b[k]?-1:0)*d);
+  const rows=all.slice(0,400);
+  const th=(key,t,n)=>`<th data-sort="${key}" class="${n?'n':''}">${t}${S.sort.k===key?(S.sort.d>0?' ↑':' ↓'):''}</th>`;
+  return `<div class="bar-top"><b>${fmtN(all.length)} lotes</b>${all.length>rows.length?`<span class="muted">· mostrando ${rows.length}; usa el buscador o los filtros</span>`:''}<span class="spacer"></span><button class="btn sm" id="copyCsv">Copiar para Excel</button></div>
+  <div class="tbl-wrap"><table><thead><tr>${th('lote','Lote')}${th('ubic','Ubicación')}${th('area','Área m²',1)}${th('precio','Precio',1)}${th('estado','Estado')}${th('cliente','Cliente')}${th('pag','Pagado',1)}${th('saldo','Saldo',1)}${th('mora','Vencido',1)}</tr></thead><tbody>
+  ${rows.map(({l,r})=>`<tr data-id="${esc(l.id)}"><td><b>${esc(loteName(l))}</b></td><td class="muted">${esc(ubicTxt(l))||'—'}</td><td class="n">${fmtN(l.area,2)}</td><td class="n">${l.venta?fmt(l.venta.precioFinal):fmtP(l)}</td>
+   <td><span class="badge"><i style="background:${ESTADOS[l.estado].color}"></i>${ESTADOS[l.estado].label}</span></td><td>${esc(l.cliente?.nombre||'—')}</td>
+   <td class="n">${r.pagado?fmt(r.pagado):'—'}</td><td class="n">${l.venta?fmt(r.saldo):'—'}</td><td class="n">${r.vencido?`<span class="tag red">${fmt(r.vencido)}</span>`:'—'}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+/* --- cartera --- */
+function carteraHTML(L){
+  const ventas=L.filter(l=>l.venta && matches(l)).map(l=>({l,r:resumen(l)})).filter(x=>x.r.saldo>0).sort((a,b)=>b.r.diasMora-a.r.diasMora||(a.r.prox?.fecha||'').localeCompare(b.r.prox?.fecha||''));
+  const seps=L.filter(l=>l.estado==='separado' && matches(l)).sort((a,b)=>(a.separacion?.vence||'9999').localeCompare(b.separacion?.vence||'9999'));
+  const sinReg=L.filter(l=>l.estado==='vendido').length;
+  const t=today();
+  return `<div class="tbl-wrap">
+  ${sinReg?`<div class="sec-title"><span class="tag amber">${fmtN(sinReg)}</span> lotes vendidos según el plano aún sin plan de pagos registrado <span class="muted" style="font-weight:400">— regístralos desde la ficha del lote para controlar su cartera</span></div>`:''}
+  <div class="sec-title">Separaciones activas <span class="tag">${seps.length}</span></div>
+  ${seps.length?`<table><thead><tr><th>Lote</th><th>Cliente</th><th>Teléfono</th><th class="n">Abonado</th><th>Vence</th><th>Situación</th><th></th></tr></thead><tbody>
+  ${seps.map(l=>{ if(!l.separacion) return `<tr data-id="${esc(l.id)}"><td><b>${esc(loteName(l))}</b></td><td colspan="4" class="muted">Sin datos registrados</td><td><span class="tag amber">Completar</span></td><td></td></tr>`;
+    const dl=diffDays(t,l.separacion.vence); return `<tr data-id="${esc(l.id)}"><td><b>${esc(loteName(l))}</b></td><td>${esc(l.cliente?.nombre)}</td><td>${esc(l.cliente?.telefono||'—')}</td><td class="n">${fmt(pagado(l))}</td><td>${fDate(l.separacion.vence)}</td>
+    <td>${dl<0?`<span class="tag red">Vencida hace ${-dl} d</span>`:dl<=3?`<span class="tag amber">Vence en ${dl} d</span>`:`<span class="tag green">${dl} días</span>`}</td><td><button class="btn sm" data-msg="${esc(l.id)}">Copiar mensaje</button></td></tr>`; }).join('')}
+  </tbody></table>`:'<p class="muted" style="padding:0 14px">No hay separaciones activas.</p>'}
+  <div class="sec-title">Cartera de ventas <span class="tag">${ventas.length}</span></div>
+  ${ventas.length?`<table><thead><tr><th>Lote</th><th>Cliente</th><th>Teléfono</th><th class="n">Saldo</th><th>Próximo pago</th><th class="n">Vencido</th><th>Mora</th><th></th></tr></thead><tbody>
+  ${ventas.map(({l,r})=>`<tr data-id="${esc(l.id)}"><td><b>${esc(loteName(l))}</b></td><td>${esc(l.cliente?.nombre)}</td><td>${esc(l.cliente?.telefono||'—')}</td><td class="n">${fmt(r.saldo)}</td>
+    <td>${r.prox?`${esc(r.prox.label)} · ${fDate(r.prox.fecha)} · ${fmt(r.prox.valor-r.prox.pagado)}`:'—'}</td><td class="n">${r.vencido?fmt(r.vencido):'—'}</td>
+    <td>${r.diasMora>0?`<span class="tag red">${r.diasMora} días</span>`:'<span class="tag green">Al día</span>'}</td><td><button class="btn sm" data-msg="${esc(l.id)}">Copiar mensaje</button></td></tr>`).join('')}
+  </tbody></table>`:'<p class="muted" style="padding:0 14px 16px">No hay saldos pendientes registrados.</p>'}
+  </div>`;
+}
+
+function mensajeCobro(l){
+  const r=resumen(l), P=S.proyectos[S.pid]||{}, nom=(l.cliente?.nombre||'').split(' ')[0];
+  if(l.estado==='separado' && l.separacion) return `Hola ${nom}, te saludamos de ${P.nombre}. Te recordamos que la separación del ${loteName(l)} vence el ${fDate(l.separacion.vence)}. Para conservar el lote es necesario formalizar la compra antes de esa fecha. ¡Quedamos atentos!`;
+  if(!r.prox) return `Hola ${nom}, te saludamos de ${P.nombre}. Te confirmamos que el ${loteName(l)} está totalmente pagado. ¡Gracias por tu confianza!`;
+  if(r.vencido>0) return `Hola ${nom}, te saludamos de ${P.nombre}. Según nuestro registro, el ${loteName(l)} tiene un valor vencido de ${fmt(r.vencido)} (${r.diasMora} días). Te agradecemos ponerte al día o comunicarte con nosotros si ya realizaste el pago. ¡Gracias!`;
+  return `Hola ${nom}, te saludamos de ${P.nombre}. Te recordamos que tu próximo pago del ${loteName(l)} (${r.prox?.label}) por ${fmt((r.prox?.valor||0)-(r.prox?.pagado||0))} vence el ${fDate(r.prox?.fecha)}. ¡Gracias por estar al día!`;
+}
+function fichaVenta(l){
+  const P=S.proyectos[S.pid]||{}; const ps=planSugerido(l);
+  return `${P.nombre}\n${loteName(l)}${ubicTxt(l)?' · '+ubicTxt(l):''}\nÁrea: ${fmtN(l.area,2)} m²\nPrecio: ${fmtP(l)}`+
+    (ps?`\nSeparación: ${fmt(ps.sep)}\nCuota inicial (${ps.ciPct}%): ${fmt(ps.ci)}\n${ps.N} cuotas de ${fmt(ps.cuota)}`:'');
+}
+
+/* gráfica compacta de medidas: el lote se endereza (lado largo horizontal) y se acotan sus lados reales */
+function medidasMini(l,W=170,Hh=118){
+  const g=curGeo(); if(!g) return ''; const x=g.byId[l.manzana+'-'+l.numero]; if(!x) return '';
+  const md=medidasLote(x,g); const P=md.pts;
+  // ángulo que deja el lote "recto": el de la caja envolvente más pequeña
+  let best=null;
+  P.forEach((a,i)=>{ const b=P[(i+1)%P.length]; const t=Math.atan2(b[1]-a[1],b[0]-a[0]); const c=Math.cos(-t), s=Math.sin(-t);
+    const R=P.map(p=>[p[0]*c-p[1]*s, p[0]*s+p[1]*c]); const xs=R.map(p=>p[0]), ys=R.map(p=>p[1]);
+    const w=Math.max(...xs)-Math.min(...xs), h=Math.max(...ys)-Math.min(...ys); if(!best||w*h<best.a-1e-6) best={a:w*h,t:(w>=h?t:t+Math.PI/2)}; });
+  const c=Math.cos(-best.t), s=Math.sin(-best.t); const rot=p=>[p[0]*c-p[1]*s, p[0]*s+p[1]*c];
+  const RP=P.map(rot); const xs=RP.map(p=>p[0]), ys=RP.map(p=>p[1]);
+  const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+  const pd=30; const sc=Math.min((W-2*pd)/(maxx-minx||1),(Hh-2*pd)/(maxy-miny||1));
+  const ox=(W-(maxx-minx)*sc)/2, oy=(Hh-(maxy-miny)*sc)/2;
+  const T=p=>{ const q=rot(p); return [ox+(q[0]-minx)*sc, oy+(q[1]-miny)*sc]; };
+  const C=T([x.cx,x.cy]);
+  let sv=`<polygon points="${P.map(p=>T(p).join(',')).join(' ')}" class="mz-poly"/>`;
+  const rc=ringDe(l); if(rc) sv+=`<polygon points="${P.map(p=>{ const q=T(p); return (C[0]+(q[0]-C[0])*0.86)+','+(C[1]+(q[1]-C[1])*0.86); }).join(' ')}" fill="none" stroke="${rc}" stroke-width="2" stroke-linejoin="round"/>`;
+  md.edges.forEach(e=>{ const a=T(e.a), b=T(e.b); const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1; let nx=dy/L, ny=-dx/L;
+    const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2; if((mx+nx-C[0])**2+(my+ny-C[1])**2<(mx-C[0])**2+(my-C[1])**2){ nx=-nx; ny=-ny; }
+    const o=6; sv+=`<line x1="${a[0]+nx*o}" y1="${a[1]+ny*o}" x2="${b[0]+nx*o}" y2="${b[1]+ny*o}" class="mz-cota"/>`;
+    const vert=Math.abs(dy)>Math.abs(dx); const tx=mx+nx*(vert?20:13), ty=my+ny*13+3.5;
+    sv+=`<text x="${tx}" y="${ty}" class="mz-t">${fmtN(e.m,2)}</text>`; });
+  sv+=`<text x="${C[0]}" y="${C[1]+4}" class="mz-a">${fmtN(l.area,0)} m²</text>`;
+  return `<svg class="medidas mini" viewBox="0 0 ${W} ${Hh}" width="${W}" height="${Hh}" style="width:${W}px;height:${Hh}px" role="img" aria-label="Medidas del lote"><title>Medidas en metros calculadas del plano y calibradas con el área oficial</title>${sv}</svg>`;
+}
+
+/* --- ficha del lote --- */
+function drawerHTML(id){
+  const l={id,...S.lotes[id]}; const r=resumen(l); const e=ESTADOS[l.estado]; const W=S.canWrite?'':'disabled';
+  const pct=r.total?Math.min(100,Math.round(r.pagado/r.total*100)):0; const ps=planSugerido(l);
+  let acts='';
+  if(l.estado==='disponible') acts=`<button class="btn primary" data-act="separar" ${W}>Separar</button><button class="btn" data-act="vender" ${W}>Vender</button><button class="btn" data-act="ficha">Copiar ficha</button><button class="btn" data-act="editar" ${W}>Editar</button><button class="btn ghost" data-act="bloquear" ${W}>No disponible</button>`;
+  else if(l.estado==='vendido') acts=`<button class="btn primary" data-act="vender" ${W}>Registrar datos de la venta</button><button class="btn" data-act="editar" ${W}>Editar</button><button class="btn danger" data-act="liberar" ${W}>Volver a disponible</button>`;
+  else if(l.estado==='separado' && !l.separacion) acts=`<button class="btn primary" data-act="separar" ${W}>Registrar separación</button><button class="btn" data-act="vender" ${W}>Formalizar venta</button><button class="btn danger" data-act="liberar" ${W}>Liberar</button>`;
+  else if(l.estado==='separado') acts=`<button class="btn primary" data-act="vender" ${W}>Formalizar venta</button><button class="btn" data-act="pago" ${W}>Registrar abono</button><button class="btn" data-act="msg">Copiar mensaje</button><button class="btn danger" data-act="liberar" ${W}>Liberar</button>`;
+  else if(l.estado==='cuotas'||l.estado==='contado') acts=`<button class="btn primary" data-act="pago" ${W} ${r.saldo<=0?'disabled':''}>Registrar pago</button><button class="btn" data-act="msg">Copiar mensaje</button><button class="btn" data-act="editar" ${W}>Editar</button><button class="btn danger" data-act="anular" ${W}>Anular venta</button>`;
+  else acts=`<button class="btn primary" data-act="desbloquear" ${W}>Volver a disponible</button><button class="btn" data-act="editar" ${W}>Editar</button>`;
+  const est={pagada:'green',vencida:'red',parcial:'amber',pendiente:''};
+  const g=curGeo(); const secName=g&&l.sector!==undefined?(g.sectores||[]).find(s=>s.id===l.sector)?.nombre:'';
+  return `<aside class="card drawer" id="drawer">
+  <div class="dh"><div><div class="eyebrow">${esc(secName||S.proyectos[S.pid]?.nombre)}</div>
+    <h2 class="folio" aria-label="${esc(loteName(l))}"><span class="fc"><span class="fk">Manzana</span><span class="fn ${String(mzName(l.manzana)).length>3?'long':''}">${esc(mzName(l.manzana))}</span></span><span class="fc"><span class="fk">Lote</span><span class="fn">${pad(l.numero,2)}</span></span></h2>
+    <div class="tags"><span class="tag"><i style="background:${e.color}"></i>${e.label}</span>${ubicTxt(l)?`<span class="tag acc">${esc(ubicTxt(l))}</span>`:''}${r.vencido>0?`<span class="tag red">Mora ${r.diasMora} días</span>`:''}${r.sepVencida?'<span class="tag red">Separación vencida</span>':''}</div></div>
+    <button class="x" data-act="cerrar" aria-label="Cerrar">×</button></div>
+  <div class="price pgrid"><div><div class="ps">${l.venta?'Precio de venta':'Precio de lista'}</div><div class="pv">${l.venta?fmt(l.venta.precioFinal):fmtP(l)}</div><div class="ps">${fmtN(l.area,2)} m² · ${precioLote(l)&&l.area?fmt(precioLote(l)/l.area)+' por m²':'—'}</div></div>${medidasMini(l,170,118)}</div>
+  <div class="ds"><div class="actions">${acts}</div></div>
+  ${l.estado==='disponible'&&ps?`<div class="ds"><h3>Plan de financiación sugerido</h3><div class="plan-box">
+    <div><div class="k">Separación</div><div class="v">${fmt(ps.sep)}</div></div><div><div class="k">Inicial ${ps.ciPct}%</div><div class="v">${fmt(ps.ci)}</div></div><div><div class="k">${ps.N} cuotas</div><div class="v">${fmt(ps.cuota)}</div></div></div></div>`:''}
+  ${l.deplano&&!(l.historial||[]).length?`<div class="ds hint">Vendido según el plano PDF. Registra los datos de la venta para llevar cuotas, recibos y cartera.</div>`:''}
+  ${l.frente||l.notas?`<div class="ds"><h3>Datos del lote</h3><div class="grid2">${l.frente?`<div><div class="k">Medidas</div><div class="v">${fmtN(l.frente,2)} × ${fmtN(l.fondo,2)} m</div></div>`:''}${l.notas?`<div style="grid-column:1/-1"><div class="k">Notas</div><div>${esc(l.notas)}</div></div>`:''}</div></div>`:''}
+  ${l.cliente?`<div class="ds"><h3>Cliente</h3><div class="grid2">
+    <div style="grid-column:1/-1"><div class="v">${esc(l.cliente.nombre)}</div></div>
+    <div><div class="k">Cédula</div><div class="v">${esc(l.cliente.cedula||'—')}</div></div>
+    <div><div class="k">Teléfono</div><div class="v">${esc(l.cliente.telefono||'—')}</div></div>
+    ${l.cliente.correo?`<div style="grid-column:1/-1"><div class="k">Correo</div><div class="v">${esc(l.cliente.correo)}</div></div>`:''}</div></div>`:''}
+  ${l.separacion&&l.estado==='separado'?`<div class="ds"><h3>Separación</h3><div class="grid2">
+    <div><div class="k">Fecha</div><div class="v">${fDate(l.separacion.fecha)}</div></div><div><div class="k">Vence</div><div class="v">${fDate(l.separacion.vence)}</div></div>
+    <div><div class="k">Valor acordado</div><div class="v">${fmt(l.separacion.valor)}</div></div><div><div class="k">Abonado</div><div class="v">${fmt(r.pagado)}</div></div></div></div>`:''}
+  ${l.venta?`<div class="ds"><h3>Venta · ${l.venta.modalidad==='contado'?'De contado':'A cuotas'}</h3>
+    <div class="grid2"><div><div class="k">Fecha de venta</div><div class="v">${fDate(l.venta.fecha)}</div></div><div><div class="k">Pagado</div><div class="v">${fmt(r.pagado)}</div></div>
+    <div><div class="k">Saldo</div><div class="v">${fmt(r.saldo)}</div></div><div><div class="k">Avance</div><div class="v">${pct}%</div></div></div>
+    <div class="bar"><i style="width:${pct}%"></i></div></div>`:''}
+  ${r.items.length?`<div class="ds"><h3>Plan de pagos</h3><table class="mini"><thead><tr><th>Concepto</th><th>Fecha</th><th class="n">Valor</th><th>Estado</th></tr></thead><tbody>
+    ${r.items.map(i=>`<tr><td>${esc(i.label)}</td><td>${fDate(i.fecha)}</td><td class="n">${fmt(i.valor)}</td><td><span class="tag ${est[i.estado]}">${i.estado==='parcial'?'Abono '+fmt(i.pagado):i.estado[0].toUpperCase()+i.estado.slice(1)}</span></td></tr>`).join('')}
+  </tbody></table></div>`:''}
+  ${(l.pagos||[]).length?`<div class="ds"><h3>Pagos y recibos</h3><table class="mini"><thead><tr><th>Recibo</th><th>Fecha</th><th>Concepto</th><th class="n">Valor</th><th></th></tr></thead><tbody>
+    ${[...l.pagos].reverse().map(p=>`<tr><td><button class="btn sm" data-recibo="${esc(p.id)}">N° ${pad(p.recibo)}</button></td><td>${fDate(p.fecha)}</td><td>${esc(p.concepto)}<div class="hint">${esc(p.medio||'')}${p.banco?' · '+esc(p.banco):''}</div></td><td class="n">${fmt(p.valor)}</td>
+      <td>${p.comprobante?`<button class="clip" data-comp="${esc(p.comprobante)}" title="Ver comprobante" aria-label="Ver comprobante del recibo ${pad(p.recibo)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>`:''}</td></tr>`).join('')}
+  </tbody></table></div>`:''}
+  ${(l.historial||[]).length?`<div class="ds"><h3>Historial</h3><ul class="hist">${l.historial.slice(0,25).map(h=>`<li><span class="muted">${fTs(h.ts)} · <span data-uid="${esc(h.por)}">Usuario</span></span><br>${esc(h.accion)}</li>`).join('')}</ul></div>`:''}
+  </aside>`;
+}
+
+async function fillNames(){
+  const els=[...document.querySelectorAll('[data-uid]')]; if(!els.length) return;
+  if(S.mode!=='cloud'||!S.user){ els.forEach(e=>e.textContent= e.dataset.uid==='local'?'Tú (demo)':'Usuario'); return; }
+  const ids=[...new Set(els.map(e=>e.dataset.uid))];
+  let ps={}; try{ ps=await S.user.profiles(ids); }catch(e){}
+  els.forEach(e=>{ const p=ps[e.dataset.uid]; e.textContent = p?.isMe ? 'Tú' : (p?.name || 'Otro usuario'); });
+}
+
+/* ---------- eventos ---------- */
+function bindView(){
+  const q=$('#q');
+  if(q){
+    q.oninput=e=>{ S.q=e.target.value; S.sugIdx=0; refreshSearch(); };
+    q.onfocus=()=>updateSugg();
+    q.onblur=()=>setTimeout(()=>{ const s=$('#sugg'); if(s && document.activeElement!==$('#q')) s.classList.add('hidden'); },150);
+    q.onkeydown=e=>{
+      const items=[...document.querySelectorAll('#sugg [data-go]')];
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); if(!items.length) return; S.sugIdx=((S.sugIdx||0)+(e.key==='ArrowDown'?1:-1)+items.length)%items.length; markSugg(); return; }
+      if(e.key==='Escape'){ $('#sugg')?.classList.add('hidden'); q.blur(); return; }
+      if(e.key==='Enter'){ e.preventDefault(); const it=items[S.sugIdx||0]; if(it) goSugg(it); else toast('Ningún lote coincide'); }
+    };
+  }
+  const qc=$('#qClear'); if(qc) qc.onclick=()=>{ S.q=''; S.sugIdx=0; render(); };
+  $('#fUbic').onchange=e=>{ S.ubic=e.target.value; render(); };
+  $('#fPrecio').onchange=e=>{ S.pmax=+e.target.value; render(); };
+  document.querySelectorAll('[data-est]').forEach(c=>c.onclick=()=>{ const k=c.dataset.est; S.ocultos.has(k)?S.ocultos.delete(k):S.ocultos.add(k); render(); });
+  document.querySelectorAll('[data-mora]').forEach(c=>c.onclick=()=>{ S.soloMora=!S.soloMora; render(); });
+  document.querySelectorAll('[data-sector]').forEach(c=>c.onclick=()=>{ stopTour(); const v=c.dataset.sector; S.sector = v==='all'?null:(S.sector===+v&&c.classList.contains('col')?null:+v); render(); window.P3&&window.P3.flyToSector(S.sector); });
+  document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{ stopTour(); const v=b.dataset.cam; if(v==='reset'){ S.sector=null; render(); window.P3&&window.P3.flyToSector(null); return; } S.cam=v; render(); window.P3&&window.P3.setCam(v); });
+  const bt=$('#btnTour'); if(bt) bt.onclick=()=>{ if(S.tour){ stopTour(); render(); } else startTour(); };
+  document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{ if(!window.P3) return; stopTour(); const a=b.dataset.nav;
+    if(a==='in') window.P3.zoomBy(0.6); else if(a==='out') window.P3.zoomBy(1.6); else if(a==='north') window.P3.resetNorth(); else { S.sector=null; render(); window.P3.fit(); } });
+  const lf=$('#limpiar'); if(lf) lf.onclick=limpiarTodo;
+  document.querySelectorAll('[data-esc]').forEach(b=>b.onclick=()=>window.P3&&window.P3.setEscena(b.dataset.esc));
+  // minimapa
+  const mm=$('#minimap'), msc=document.querySelector('.plano-scroll');
+  if(mm&&msc){ const g=curGeo(); const box=$('#mmView');
+    const upd=()=>{ const kx=g.w/msc.scrollWidth, ky=g.h/msc.scrollHeight;
+      box.setAttribute('x',msc.scrollLeft*kx); box.setAttribute('y',msc.scrollTop*ky); box.setAttribute('width',msc.clientWidth*kx); box.setAttribute('height',msc.clientHeight*ky); };
+    msc.addEventListener('scroll',upd,{passive:true}); upd();
+    mm.onclick=e=>{ const r=mm.querySelector('svg').getBoundingClientRect(); const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
+      msc.scrollTo({left:fx*msc.scrollWidth-msc.clientWidth/2, top:fy*msc.scrollHeight-msc.clientHeight/2, behavior:'smooth'}); }; }
+  document.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>{ const z=+b.dataset.zoom; if(z===0){ S.zoom=1; render(); return; } const sc=document.querySelector('.plano-scroll'); const r=sc.getBoundingClientRect(); zoomAt(z>0?1.5:1/1.5, r.left+r.width/2, r.top+r.height/2); });
+  document.querySelectorAll('[data-sort]').forEach(t=>t.onclick=()=>{ const k=t.dataset.sort; S.sort = S.sort.k===k?{k,d:-S.sort.d}:{k,d:1}; render(); });
+  document.querySelectorAll('tr[data-id]').forEach(el=>el.addEventListener('click',ev=>{ if(ev.target.closest('button')) return; S.sel=el.dataset.id; render(); }));
+  document.querySelectorAll('[data-msg]').forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); copiar(mensajeCobro({id:b.dataset.msg,...S.lotes[b.dataset.msg]}),'Mensaje copiado: pégalo en WhatsApp'); });
+  const cc=$('#copyCsv'); if(cc) cc.onclick=copiarCSV;
+  const tip=$('#tip'); tip.classList.add('hidden');
+  const sc=document.querySelector('.plano-scroll');
+  if(sc){
+    let st=null;
+    sc.onpointerdown=e=>{ if(e.button!==0) return; st={x:e.clientX,y:e.clientY,l:sc.scrollLeft,t:sc.scrollTop,m:false}; };
+    sc.onpointermove=e=>{
+      if(st){ const dx=e.clientX-st.x, dy=e.clientY-st.y; if(Math.abs(dx)+Math.abs(dy)>5) st.m=true; if(st.m){ sc.scrollLeft=st.l-dx; sc.scrollTop=st.t-dy; tip.classList.add('hidden'); return; } }
+      const el=e.target.closest && e.target.closest('.lot'); showTip(el?el.dataset.id:null,e);
+    };
+    sc.onpointerleave=()=>tip.classList.add('hidden');
+    window.onpointerup=()=>{ if(st&&st.m) S.dragged=Date.now(); st=null; };
+    sc.onclick=e=>{ if(Date.now()-(S.dragged||0)<250) return; const el=e.target.closest('.lot'); if(!el) return; S.sel=el.dataset.id; render(); };
+    sc.onwheel=e=>{ if(!(e.ctrlKey||e.metaKey)) return; e.preventDefault(); zoomAt(e.deltaY<0?1.25:0.8,e.clientX,e.clientY); };
+  }
+  const dr=$('#drawer'); if(dr){
+    dr.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>accion(b.dataset.act,S.sel));
+    dr.querySelectorAll('[data-recibo]').forEach(b=>b.onclick=()=>{ const l=S.lotes[S.sel]; const p=l.pagos.find(x=>x.id===b.dataset.recibo); verRecibo({id:S.sel,...l},p); });
+    dr.querySelectorAll('[data-comp]').forEach(b=>b.onclick=()=>verComprobante(b.dataset.comp));
+  }
+}
+/* ---------- buscador con sugerencias ---------- */
+function refreshSearch(){
+  updateSugg();
+  if(S.view==='3d' && window.P3 && document.getElementById('v3d')){ window.P3.repaint(); syncBotonesBusqueda(); }
+  else { clearTimeout(S._qt); S._qt=setTimeout(()=>render(),160); }
+}
+const filtrosActivos = () => !!(S.q||S.ubic||S.pmax||S.ocultos.size||S.soloMora||S.sector!==null);
+function limpiarTodo(){ S.q=''; S.ubic=''; S.pmax=0; S.ocultos.clear(); S.soloMora=false; S.sector=null; render(); if(window.P3&&S.view==='3d') window.P3.fit(); }
+/* en el 3D el buscador no redibuja la página: solo se agregan o quitan la × y "Limpiar" */
+function syncBotonesBusqueda(){
+  const sb=document.querySelector('.sbox'); if(!sb) return;
+  let x=$('#qClear'); if(S.q&&!x){ x=document.createElement('button'); x.className='sclear'; x.id='qClear'; x.title='Limpiar búsqueda'; x.textContent='×'; x.onclick=()=>{ S.q=''; render(); }; sb.insertBefore(x,$('#sugg')); } else if(!S.q&&x) x.remove();
+  let lf=$('#limpiar'); if(filtrosActivos()&&!lf){ lf=document.createElement('button'); lf.className='btn sm ghost'; lf.id='limpiar'; lf.textContent='Limpiar'; lf.onclick=limpiarTodo; sb.parentElement.insertBefore(lf,document.querySelector('.toolbar .chips')); } else if(!filtrosActivos()&&lf) lf.remove();
+}
+function sugItem(l){
+  const st=ESTADOS[l.estado]; const rc=ringDe(l);
+  return `<div class="sg-i" data-go="${esc(l.id)}"><span class="lg" style="${rc?`box-shadow:inset 0 0 0 2px ${rc}`:''}"></span>
+    <div class="sg-t"><b>Mz ${esc(mzName(l.manzana))} · Lote ${pad(l.numero,2)}</b><span>${st.label} · ${fmtN(l.area,2)} m²${l.cliente?' · '+esc(l.cliente.nombre):''}</span></div>
+    <div class="sg-p">${l.venta?fmt(l.venta.precioFinal):fmtP(l)}</div></div>`;
+}
+function updateSugg(){
+  const box=$('#sugg'); if(!box) return; const pq=pqActual();
+  if(!pq || document.activeElement!==$('#q')){ box.classList.add('hidden'); return; }
+  const L=lotesArr(); let h='';
+  const vacio = pq.lote==null&&pq.mz==null&&pq.num==null&&!pq.est.size&&!pq.mora&&!pq.ubic&&pq.sector==null&&!pq.texto.length;
+  if(vacio){ box.innerHTML=`<div class="sg-empty">Escribe el número: <b>${esc(pq.pend||'lote')} 5</b>, o prueba "mz 105", "esquineros disponibles", "sector norte"…</div>`; box.classList.remove('hidden'); return; }
+  const ord=(a,b)=>(a.estado==='disponible'?0:1)-(b.estado==='disponible'?0:1)||mzCmp(a.manzana,b.manzana)||a.numero-b.numero;
+  const verMz=mz=>{ const mzL=L.filter(l=>norm(l.manzana)===norm(mz)); if(!mzL.length) return ''; const d=mzL.filter(l=>l.estado==='disponible').length;
+    return `<div class="sg-i mz" data-go="mz:${esc(mzL[0].manzana)}"><span class="lg mzi">Mz</span><div class="sg-t"><b>Ver toda la manzana ${esc(mzName(mzL[0].manzana))}</b><span>${mzL.length} lotes · ${d} disponibles</span></div><div class="sg-p">→</div></div>`; };
+  // un número suelto puede ser lote o manzana: se ofrece la manzana y luego los lotes con ese número
+  if(pq.num!=null) h+=verMz(String(pq.num));
+  if(pq.mz!=null && pq.lote==null) h+=verMz(pq.mz);
+  const m=L.filter(l=>qMatch(l,pq)).sort(ord);
+  if(m.length){ const d=m.filter(l=>l.estado==='disponible').length;
+    const enMz = (pq.lote!=null||pq.num!=null) && pq.mz==null ? ` en ${new Set(m.map(l=>l.manzana)).size} manzanas` : '';
+    h+=`<div class="sg-h">${esc(describirQ(pq)||'Resultados')} <span>${fmtN(m.length)} lote${m.length===1?'':'s'}${enMz} · ${d} disponible${d===1?'':'s'}</span></div>`+m.slice(0,120).map(sugItem).join('');
+    if(m.length>120) h+=`<div class="sg-empty"><span>Mostrando 120 de ${fmtN(m.length)}. Agrega una palabra para afinar: "disponible", "esquinero", "mz 12"…</span></div>`; }
+  if(!h) h=pq.pend ? `<div class="sg-empty">Escribe el número: <b>${esc(pq.pend)} 5</b>…</div>`
+    : `<div class="sg-empty">Ningún lote coincide con “${esc(S.q)}”.<br><span>Prueba: "lote 5", "mz 105", "105-3", "esquineros disponibles", "sector norte", "en mora" o el nombre del cliente.</span></div>`;
+  box.innerHTML=h; box.classList.remove('hidden');
+  box.querySelectorAll('[data-go]').forEach((it,i)=>{ it.onmousedown=e=>{ e.preventDefault(); goSugg(it); }; it.onmouseenter=()=>{ S.sugIdx=i; markSugg(); }; });
+  markSugg();
+}
+function markSugg(){ const items=[...document.querySelectorAll('#sugg [data-go]')]; items.forEach((it,i)=>it.classList.toggle('on',i===(S.sugIdx||0))); const a=items[S.sugIdx||0]; if(a) a.scrollIntoView({block:'nearest'}); }
+function goSugg(it){
+  const go=it.dataset.go; $('#sugg')?.classList.add('hidden'); $('#q')?.blur();
+  if(go.startsWith('mz:')){ const mz=go.slice(3); S.q='mz '+mz; S.sel=null; render();
+    const g=curGeo(); if(g&&S.view==='3d'&&window.P3){ const pts=g.lotes.filter(x=>String(x.mz)===mz).flatMap(x=>x.p); const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+      window.P3.flyToBox(Math.min(...xs)-40,Math.min(...ys)-40,Math.max(...xs)+40,Math.max(...ys)+40); }
+    return; }
+  selectLote(go);
+}
+function selectLote(id){
+  S.sel=id; const l=S.lotes[id];
+  if(S.view==='plano' && S.zoom<3) S.zoom=3;
+  render();
+  if(S.view==='3d' && window.P3) window.P3.flyToLot(id);
+  else focusLote(id);
+}
+function zoomAt(f,cx,cy){
+  const sc=document.querySelector('.plano-scroll'); if(!sc) return;
+  const r=sc.getBoundingClientRect(); const ox=cx-r.left, oy=cy-r.top;
+  const fx=(sc.scrollLeft+ox)/sc.scrollWidth, fy=(sc.scrollTop+oy)/sc.scrollHeight;
+  const nz=Math.max(1,Math.min(10,S.zoom*f)); if(nz===S.zoom) return; S.zoom=nz;
+  render();
+  const s2=document.querySelector('.plano-scroll'); if(!s2) return;
+  s2.scrollLeft=fx*s2.scrollWidth-ox; s2.scrollTop=fy*s2.scrollHeight-oy;
+}
+function focusLote(id){
+  const el=document.querySelector(`.lot[data-id="${CSS.escape(id)}"]`); const sc=document.querySelector('.plano-scroll'); if(!el||!sc) return;
+  const a=el.getBoundingClientRect(), r=sc.getBoundingClientRect();
+  sc.scrollLeft+=(a.left+a.width/2)-(r.left+r.width/2); sc.scrollTop+=(a.top+a.height/2)-(r.top+r.height/2);
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !e.target.closest?.('#q')){ if(document.querySelector('.ov,.sheet')) cerrarModal(); else if(S.tour){ stopTour(); render(); } else if(S.sel){S.sel=null;render();} } });
+window.addEventListener('resize',()=>{ clearTimeout(S._rs); S._rs=setTimeout(()=>{ if(S.view!=='3d') render(); else { const vw=document.getElementById('view'); if(vw){ const top=vw.getBoundingClientRect().top+window.scrollY; document.documentElement.style.setProperty('--vh-plano',Math.max(480,innerHeight-top-18)+'px'); } } },200); });
+
+async function copiar(txt,ok){ try{ await navigator.clipboard.writeText(txt); toast(ok||'Copiado'); }catch(e){ modal('Copiar',`<p class="muted">Selecciona el texto y cópialo:</p><textarea style="width:100%;height:180px;background:var(--bg2);color:var(--ink);border:1px solid var(--line2);border-radius:9px;padding:10px">${esc(txt)}</textarea>`,null,'Cerrar'); } }
+function copiarCSV(){
+  const L=lotesArr().filter(matches);
+  const rows=[['Manzana','Lote','Ubicación','Área m2','Precio','Estado','Cliente','Cédula','Teléfono','Pagado','Saldo','Vencido']];
+  L.forEach(l=>{ const r=resumen(l); rows.push([l.manzana,l.numero,ubicTxt(l),l.area,l.venta?l.venta.precioFinal:precioLote(l),ESTADOS[l.estado].label,l.cliente?.nombre||'',l.cliente?.cedula||'',l.cliente?.telefono||'',r.pagado,l.venta?r.saldo:0,r.vencido]); });
+  copiar(rows.map(r=>r.map(c=>String(c).replace(/\t|\n/g,' ')).join('\t')).join('\n'),'Tabla copiada: pégala en Excel o Google Sheets');
+}
+
+/* =========================================================
+   Modales y acciones
+   ========================================================= */
+function bindSubmit(form,onOk,okLabel){
+  conValidacion(form);
+  form.onsubmit=async e=>{ e.preventDefault(); if(!onOk) return cerrarModal();
+    const malos=[...form.querySelectorAll('input[required],input[data-v]')].filter(i=>!i.closest('.hidden') && !validarCampo(i));
+    if(malos.length){ malos[0].focus(); toast(malos.length===1?'Revisa el campo marcado':`Revisa los ${malos.length} campos marcados`); return; }
+    const btn=form.querySelector('[type=submit]'); btn.disabled=true; btn.textContent='Guardando…';
+    try{ await onOk(Object.fromEntries(new FormData(form)),form); }
+    catch(err){ console.error(err); toast(err?.message || ('No se pudo guardar ('+(err?.code||'error')+')'),4000); btn.disabled=false; btn.textContent=okLabel; }
+  };
+}
+/* Opción A: el registro se hace en un panel lateral; el plano queda visible con el lote aislado */
+function sheet(title,sub,body,onOk,okLabel,id){
+  cerrarModal();
+  const sh=document.createElement('div'); sh.className='sheet';
+  sh.innerHTML=`<form novalidate><header><div style="flex:1;min-width:0"><div class="eyebrow">${esc(sub)}</div><h2 class="t-title">${esc(title)}</h2></div>${S.lotes[id]?medidasMini({id,...S.lotes[id]},150,104):''}<button type="button" class="x" aria-label="Cerrar">×</button></header>
+    <div class="body">${body}</div><footer><div class="row"><button type="button" class="btn" data-c>Cancelar</button><button class="btn primary" type="submit">${esc(okLabel)}</button></div></footer></form>`;
+  document.body.appendChild(sh);
+  const form=sh.querySelector('form');
+  const calc=form.querySelector('.calc'); if(calc) form.querySelector('footer').prepend(calc);
+  sh.querySelector('.x').onclick=cerrarModal; sh.querySelector('[data-c]').onclick=cerrarModal;
+  bindSubmit(form,onOk,okLabel);
+  enterIsolate(id);
+  setTimeout(()=>form.querySelector('input:not([type=radio]),select')?.focus(),60);
+  return form;
+}
+function enterIsolate(id){
+  stopTour(); S.isolate=id; S.sel=id; document.body.classList.add('selling'); render();
+  if(S.view==='3d' && window.P3) window.P3.flyToLot(id,'cerca'); else focusLote(id);
+}
+function exitIsolate(){ if(!S.isolate) return; S.isolate=null; document.body.classList.remove('selling'); render(); }
+/* al guardar: el lote cambia de estado con una animación y luego aparece el recibo */
+function celebrar(id,pago,msg){
+  cerrarModal(); toast(msg);
+  if(window.P3 && S.view==='3d') window.P3.pulse(id);
+  if(pago) setTimeout(()=>verRecibo({id,...S.lotes[id]},pago), S.view==='3d'?1100:200);
+}
+function modal(title,body,onOk,okLabel='Guardar',opts={}){
+  cerrarModal();
+  const ov=document.createElement('div'); ov.className='ov';
+  ov.innerHTML=`<form class="modal" novalidate><header><h2 class="t-title">${esc(title)}</h2><button type="button" class="x" aria-label="Cerrar">×</button></header><div class="body">${body}</div>
+    <footer>${opts.extra||''}<button type="button" class="btn" data-c>${onOk?'Cancelar':'Cerrar'}</button>${onOk?`<button class="btn ${opts.danger?'danger':'primary'}" type="submit">${esc(okLabel)}</button>`:''}</footer></form>`;
+  document.body.appendChild(ov);
+  const form=ov.querySelector('form');
+  ov.querySelector('.x').onclick=cerrarModal; ov.querySelector('[data-c]').onclick=cerrarModal;
+  ov.addEventListener('mousedown',e=>{ if(e.target===ov) cerrarModal(); });
+  bindSubmit(form,onOk,okLabel);
+  setTimeout(()=>form.querySelector('input:not([type=radio]),select')?.focus(),30);
+  return form;
+}
+function cerrarModal(){ document.querySelectorAll('.ov,.sheet').forEach(o=>o.remove()); exitIsolate(); }
+
+const clienteFields = c => `
+  <label class="full">Nombre completo del cliente *<input name="nombre" required value="${esc(c?.nombre)}"></label>
+  <label>Cédula / NIT *<input name="cedula" required inputmode="numeric" data-v="cedula" autocomplete="off" value="${esc(c?.cedula)}"></label>
+  <label>Teléfono / WhatsApp *<input name="telefono" required inputmode="tel" data-v="tel" placeholder="3001234567" value="${esc(c?.telefono)}"></label>
+  <label class="full">Correo<input name="correo" type="email" data-v="email" value="${esc(c?.correo)}"></label>`;
+/* validación en línea (NN/g): se revisa al salir del campo y el error se muestra junto al campo */
+function validarCampo(i){
+  const v=String(i.value||'').trim(); let msg='';
+  if(i.required && !v) msg='Este campo es obligatorio';
+  else if(v && i.dataset.v==='cedula' && !/^[0-9.\- ]{5,15}$/.test(v)) msg='Solo números (puede llevar puntos o guion)';
+  else if(v && i.dataset.v==='tel' && !/^\+?[0-9 ]{7,15}$/.test(v)) msg='Escribe un teléfono válido, ej. 3001234567';
+  else if(v && i.dataset.v==='tel' && /^3/.test(v.replace(/\D/g,'')) && v.replace(/\D/g,'').length!==10) msg='Un celular colombiano tiene 10 dígitos';
+  else if(v && i.dataset.v==='email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) msg='Revisa el correo';
+  i.classList.toggle('err',!!msg);
+  let m=i.parentElement.querySelector('.errmsg'); if(msg){ if(!m){ m=document.createElement('span'); m.className='errmsg'; i.after(m); } m.textContent=msg; } else if(m) m.remove();
+  return !msg;
+}
+function conValidacion(form){
+  form.addEventListener('focusout',e=>{ if(e.target.matches('input[required],input[data-v]')) validarCampo(e.target); });
+  form.addEventListener('input',e=>{ if(e.target.classList.contains('err')) validarCampo(e.target); });
+}
+const pagoFields = (valor,label='Valor recibido') => `
+  <label>${label}<input name="pvalor" type="number" min="0" step="1000" value="${valor}"></label>
+  <label>Medio de pago<select name="medio">${MEDIOS.map(m=>`<option>${m}</option>`).join('')}</select></label>
+  <label class="full" data-banco>Banco o cuenta que recibe<select name="banco">${bancosProyecto().map(b=>`<option>${esc(b)}</option>`).join('')}<option value="Otro">Otro…</option></select></label>
+  <label class="full hidden" data-banco-otro>¿Cuál banco o cuenta?<input name="bancoOtro" placeholder="Ej.: Banco de Bogotá, Daviplata…"></label>
+  <label class="full">Referencia / N° de transacción<input name="ref" placeholder="Opcional"></label>
+  <div class="full upl" data-comp>
+    <input type="hidden" name="comprobante">
+    <label class="upl-zone"><input type="file" accept="image/*" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+      <span><b>Adjuntar comprobante</b><br><small>Captura de la transferencia · también puedes pegarla con Ctrl+V</small></span></label>
+    <div class="upl-prev hidden"><img alt="Comprobante adjunto"><button type="button" class="btn sm ghost" data-quitar>Quitar</button></div>
+  </div>`;
+const MEDIOS_BANCO = ['Transferencia','Consignación'];
+const BANCOS_DEF = ['Bancolombia','Davivienda','Nequi','Transferencia internacional'];
+const bancosProyecto = () => { const b=S.proyectos[S.pid]?.bancos; return Array.isArray(b)&&b.length ? b : BANCOS_DEF; };
+/* comprime la captura a JPEG (≤ ~170 KB) para guardarla como evidencia sin pesar en la nube */
+async function comprimirImagen(file,max=170000){
+  const bmp=await createImageBitmap(file); let w=bmp.width, h=bmp.height; const k=Math.min(1,1400/Math.max(w,h)); w=Math.round(w*k); h=Math.round(h*k);
+  const cv=document.createElement('canvas'); let q=0.82, url='';
+  for(let i=0;i<10;i++){ cv.width=w; cv.height=h; const c=cv.getContext('2d'); c.fillStyle='#fff'; c.fillRect(0,0,w,h); c.drawImage(bmp,0,0,w,h);
+    url=cv.toDataURL('image/jpeg',q); if(url.length<=max) break; if(q>0.5) q-=0.1; else { w=Math.round(w*0.8); h=Math.round(h*0.8); } }
+  return url;
+}
+/* campos de pago: el banco y el comprobante aparecen solo para transferencia o consignación */
+function wirePago(form){
+  const medio=form.querySelector('[name=medio]'); if(!medio) return;
+  const rowB=form.querySelector('[data-banco]'), rowO=form.querySelector('[data-banco-otro]'), comp=form.querySelector('[data-comp]');
+  const banco=form.querySelector('[name=banco]'), hid=form.querySelector('[name=comprobante]'), file=comp.querySelector('input[type=file]');
+  const prev=comp.querySelector('.upl-prev'), zone=comp.querySelector('.upl-zone');
+  const upd=()=>{ const t=MEDIOS_BANCO.includes(medio.value); rowB.classList.toggle('hidden',!t); comp.classList.toggle('hidden',!t); rowO.classList.toggle('hidden',!(t&&banco.value==='Otro')); };
+  medio.onchange=upd; banco.onchange=upd; upd();
+  const usar=async f=>{ if(!f||!/^image\//.test(f.type)) return toast('El comprobante debe ser una imagen (captura o foto)');
+    zone.querySelector('b').textContent='Procesando…';
+    try{ const url=await comprimirImagen(f); hid.value=url; prev.querySelector('img').src=url; prev.classList.remove('hidden'); zone.classList.add('hidden'); }
+    catch(e){ toast('No se pudo leer la imagen'); } finally{ zone.querySelector('b').textContent='Adjuntar comprobante'; } };
+  file.onchange=()=>usar(file.files[0]);
+  comp.querySelector('[data-quitar]').onclick=()=>{ hid.value=''; file.value=''; prev.classList.add('hidden'); zone.classList.remove('hidden'); };
+  zone.ondragover=e=>{ e.preventDefault(); zone.classList.add('over'); }; zone.ondragleave=()=>zone.classList.remove('over');
+  zone.ondrop=e=>{ e.preventDefault(); zone.classList.remove('over'); usar(e.dataTransfer.files[0]); };
+  form.addEventListener('paste',e=>{ if(comp.classList.contains('hidden')) return; const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ e.preventDefault(); usar(it.getAsFile()); } });
+}
+async function verComprobante(cid,titulo){
+  const c=await Store.getComprobante(cid);
+  if(!c) return toast('No se encontró el comprobante');
+  modal(titulo||'Comprobante de pago',`<img src="${c.img}" alt="Comprobante" style="width:100%;border-radius:10px;display:block;background:#fff">
+    <p class="hint" style="margin-top:8px">Adjuntado el ${fTs(c.ts)} · <span data-uid="${esc(c.por)}">Usuario</span></p>`,null,'Cerrar');
+  fillNames();
+}
+function liveMoney(form){ wirePago(form); form.querySelectorAll('input[type=number]').forEach(i=>{ if(/numCuotas|dias|ciPct|cuotas|sepDias|manzanas|porManzana|porFila|area|frente|fondo/.test(i.name)) return; const h=document.createElement('span'); h.className='hint'; const upd=()=>h.textContent=i.value?fmt(i.value):''; i.after(h); i.addEventListener('input',upd); upd(); }); }
+
+/* Una operación = una sola escritura: el cambio del lote y el pago con su recibo se guardan juntos
+   (si algo falla no queda un lote vendido sin recibo). El número de recibo se pide solo después
+   de validar, así el consecutivo no queda con huecos. */
+const saldoDe = l => l.venta ? resumen(l).saldo : Math.max(0,precioLote(l)-pagado(l));
+async function operar(id,aplicar,pago){
+  let recibo=null, cid=null;
+  // el comprobante se guarda primero (si la operación falla queda una imagen huérfana, nunca un pago sin evidencia)
+  if(pago?.comprobante && +pago.valor>0){ cid='c'+uid(); await Store.setComprobante(cid,{lote:id,img:pago.comprobante,ts:Date.now(),por:S.uid||'local'}); }
+  await Store.mutateLote(id, async x=>{
+    if(aplicar) aplicar(x);
+    const valor=Math.round(+pago?.valor||0);
+    if(valor>0){
+      const r=resumen(x), saldo=saldoDe(x);
+      if((x.venta||precioLote(x)>0) && valor>saldo) throw new Error(`El pago (${fmt(valor)}) supera el saldo pendiente (${fmt(saldo)}).`);
+      const n=await Store.nextRecibo();
+      const c=pago.concepto || (r.prox ? (valor>=r.prox.valor-r.prox.pagado?'Pago ':'Abono a ')+r.prox.label.toLowerCase() : 'Abono');
+      recibo={id:uid(),recibo:n,fecha:pago.fecha,valor,medio:pago.medio,banco:pago.banco||'',ref:pago.ref||'',concepto:c,por:S.uid||'local',ts:Date.now(),cliente:{nombre:x.cliente?.nombre||'',cedula:x.cliente?.cedula||''}};
+      if(cid) recibo.comprobante=cid;
+      (x.pagos=x.pagos||[]).push(recibo);
+      recibo.saldoDespues=saldoDe(x);
+      hist(x,`Recibo N° ${pad(n)} por ${fmt(valor)} (${c}, ${pago.medio}${pago.banco?' · '+pago.banco:''})${cid?' · con comprobante':''}`);
+    }
+    return x;
+  });
+  return recibo;
+}
+const clienteDe = d => ({nombre:d.nombre.trim(),cedula:d.cedula.trim(),telefono:d.telefono.trim(),correo:d.correo.trim()});
+function pagoDe(d,concepto){
+  const conBanco=MEDIOS_BANCO.includes(d.medio);
+  const banco = conBanco ? (d.banco==='Otro' ? (d.bancoOtro||'').trim() : d.banco) : '';
+  if(conBanco && +d.pvalor>0 && !banco) throw new Error('Escribe a qué banco o cuenta llegó la transferencia.');
+  return {valor:d.pvalor,fecha:d.fecha,medio:d.medio,banco,ref:d.ref,concepto,comprobante:conBanco?d.comprobante:''};
+}
+
+function accion(act,id){
+  const l={id,...S.lotes[id]}; const P=S.proyectos[S.pid]||{};
+  if(act==='cerrar'){ S.sel=null; render(); return; }
+  if(act==='msg'){ copiar(mensajeCobro(l),'Mensaje copiado: pégalo en WhatsApp'); return; }
+  if(act==='ficha'){ copiar(fichaVenta(l),'Ficha copiada: pégala en WhatsApp'); return; }
+
+  const subt=`${loteName(l)} · ${fmtN(l.area,2)} m² · ${l.venta?fmt(l.venta.precioFinal):fmtP(l)}`;
+  if(act==='separar'){
+    const f=sheet('Separar lote',subt,`<div class="f"><div class="sec-h first">Cliente</div>${clienteFields(null)}
+      <div class="sec-h">Separación</div>
+      <label>Valor de separación<input name="valor" type="number" min="0" step="10000" value="${+P.sepValor||1000000}"></label>
+      <label>Días de vigencia<input name="dias" type="number" min="1" value="${+P.sepDias||15}"></label>
+      <label>Fecha<input name="fecha" type="date" value="${today()}"></label><span></span>
+      <div class="sec-h">Pago recibido hoy</div>
+      ${pagoFields(+P.sepValor||1000000,'Valor recibido')}</div>
+      <div class="calc" id="calc"></div>`,
+      async d=>{
+        const sep={fecha:d.fecha,valor:+d.valor,vence:addDays(d.fecha,+d.dias)};
+        const p=await operar(id,x=>{ if(!(x.estado==='disponible'||(x.estado==='separado'&&!x.separacion))) throw new Error('Este lote acaba de cambiar de estado (otra persona lo modificó). Revisa la ficha.');
+          x.estado='separado'; x.cliente=clienteDe(d); x.separacion=sep; hist(x,`Separado por ${x.cliente.nombre} hasta ${fDate(sep.vence)}`); }, pagoDe(d,'Separación del lote'));
+        celebrar(id,p,'Lote separado');
+      },'Separar y generar recibo',id);
+    liveMoney(f);
+    const calcS=()=>{ const fd=Object.fromEntries(new FormData(f));
+      f.querySelector('#calc').innerHTML=`<span>Precio del lote</span><b>${fmtP(l)}</b><span>Separación</span><b>${fmt(fd.valor)}</b><span>Recibido hoy</span><b>${fmt(fd.pvalor)}</b><span>Vence</span><b>${fd.fecha?fDate(addDays(fd.fecha,+fd.dias||0)):'—'}</b>`; };
+    f.addEventListener('input',calcS); calcS();
+    return;
+  }
+
+  if(act==='vender'){
+    const yaPag=pagado(l); const precio=precioLote(l); const ciPct=(+P.ciPct||30)/100;
+    const f=sheet(l.estado==='vendido'?'Registrar venta':'Vender lote',subt,`<div class="f">
+      <div class="sec-h first">Modalidad</div>
+      <div class="seg"><label><input type="radio" name="modalidad" value="cuotas" checked> A cuotas</label><label><input type="radio" name="modalidad" value="contado"> De contado</label></div>
+      <div class="sec-h">Cliente</div>
+      ${clienteFields(l.cliente)}
+      <div class="sec-h">Condiciones</div>
+      <label>Precio de venta<input name="precioFinal" type="number" min="0" step="100000" value="${precio||''}"></label>
+      <label>Fecha de venta<input name="fecha" type="date" value="${today()}"></label>
+      <label data-m="cuotas">Cuota inicial total<input name="cuotaInicial" type="number" min="0" step="100000" value="${Math.round(precio*ciPct/1e5)*1e5}"></label>
+      <label data-m="cuotas">Número de cuotas<input name="numCuotas" type="number" min="1" max="240" value="${+P.cuotas||24}"></label>
+      <label data-m="cuotas">Fecha primera cuota<input name="fechaPrimera" type="date" value="${addMonths(today(),1)}"></label>
+      <label data-m="contado" class="hidden">Fecha límite de pago<input name="fechaLimite" type="date" value="${addDays(today(),30)}"></label>
+      <span></span>
+      <div class="sec-h">Pago recibido hoy</div>
+      ${pagoFields(0,'Valor recibido')}
+      </div><div class="calc" id="calc"></div>`,
+      async d=>{
+        const v={modalidad:d.modalidad,fecha:d.fecha,precioFinal:+d.precioFinal};
+        if(v.precioFinal<=0) throw new Error('Escribe el precio de venta.');
+        if(d.modalidad==='cuotas'){ Object.assign(v,{cuotaInicial:+d.cuotaInicial,numCuotas:+d.numCuotas,fechaPrimera:d.fechaPrimera}); if(v.cuotaInicial>v.precioFinal) throw new Error('La cuota inicial no puede superar el precio.'); }
+        else v.fechaLimite=d.fechaLimite;
+        if(d.modalidad==='cuotas' && d.fechaPrimera<=d.fecha) throw new Error('La primera cuota debe ser posterior a la fecha de venta.');
+        const p=await operar(id,x=>{ if(!['disponible','separado','vendido'].includes(x.estado)) throw new Error('Este lote ya fue vendido por otra persona. Revisa la ficha.');
+          x.estado=d.modalidad; x.venta=v; x.cliente=clienteDe(d);
+          hist(x,`Vendido ${d.modalidad==='contado'?'de contado':`a ${v.numCuotas} cuotas`} a ${x.cliente.nombre} por ${fmt(v.precioFinal)}`); }, pagoDe(d));
+        celebrar(id,p,'Venta registrada');
+      },'Registrar venta',id);
+    liveMoney(f);
+    const calc=()=>{ const fd=Object.fromEntries(new FormData(f)); const pf=+fd.precioFinal||0;
+      f.querySelectorAll('[data-m]').forEach(el=>el.classList.toggle('hidden',el.dataset.m!==fd.modalidad));
+      let h=`<span>Precio de venta</span><b>${fmt(pf)}</b>`;
+      if(yaPag) h+=`<span>Ya abonado</span><b>− ${fmt(yaPag)}</b>`;
+      if(fd.modalidad==='cuotas'){ const ci=+fd.cuotaInicial||0, N=Math.max(1,+fd.numCuotas||1), fin=pf-ci; const base=Math.floor(fin/N/1000)*1000;
+        h+=`<span>Cuota inicial (${pf?Math.round(ci/pf*100):0}%)</span><b>${fmt(ci)}</b><span>Falta de la cuota inicial</span><b>${fmt(Math.max(0,ci-yaPag))}</b><span>Saldo a financiar</span><b>${fmt(fin)}</b><span>Valor de cada cuota (${N})</span><b>${fmt(base)}</b>`; }
+      else h+=`<span>Saldo a pagar</span><b>${fmt(Math.max(0,pf-yaPag))}</b>`;
+      f.querySelector('#calc').innerHTML=h; };
+    f.addEventListener('input',calc); calc();
+    return;
+  }
+
+  if(act==='pago'){
+    const r=resumen(l); const sug=r.prox?Math.max(0,r.prox.valor-r.prox.pagado):0;
+    const f=sheet('Registrar pago',subt+(l.cliente?' · '+l.cliente.nombre:''),`<div class="f">
+      <div class="sec-h first">Pago</div>
+      <label>Fecha<input name="fecha" type="date" value="${today()}"></label><span></span>
+      ${pagoFields(sug)}</div>
+      <div class="calc"><span>Cliente</span><b>${esc(l.cliente?.nombre)}</b><span>Siguiente obligación</span><b>${r.prox?esc(r.prox.label)+' · '+fDate(r.prox.fecha):'—'}</b>
+      ${r.vencido?`<span>Valor vencido</span><b style="color:var(--danger)">${fmt(r.vencido)}</b>`:''}<span>Saldo actual</span><b>${fmt(l.venta?r.saldo:Math.max(0,(+l.separacion?.valor||0)-r.pagado))}</b></div>`,
+      async d=>{ if(!(+d.pvalor>0)) throw new Error('Escribe el valor recibido.'); const p=await operar(id,null,pagoDe(d)); celebrar(id,p,'Pago registrado'); },'Registrar y generar recibo',id);
+    liveMoney(f); return;
+  }
+
+  if(act==='editar'){
+    modal(`Editar ${loteName(l)}`,`<div class="f">
+      <label>Área (m²)<input name="area" type="number" min="0" step="0.01" value="${l.area||''}"></label>
+      <label>Precio propio del lote<input name="precio" type="number" min="0" step="100000" value="${+l.precio>0?l.precio:''}" placeholder="Vacío = precio de lista"></label>
+      <label>Frente (m)<input name="frente" type="number" min="0" step="0.01" value="${l.frente||''}"></label>
+      <label>Fondo (m)<input name="fondo" type="number" min="0" step="0.01" value="${l.fondo||''}"></label>
+      <label class="full">Notas internas<textarea name="notas" rows="3">${esc(l.notas)}</textarea></label></div>
+      ${+l.lista>0?`<p class="hint">Precio de lista oficial: ${fmt(l.lista)}</p>`:''}`,
+      async d=>{ await Store.mutateLote(id,x=>{ const cambios=[]; for(const k of ['area','precio','frente','fondo']){ const nv=d[k]===''?null:+d[k]; if((+x[k]||0)!==(nv||0)){ cambios.push(`${k} ${k==='precio'?(x[k]?fmt(x[k]):'lista'):(x[k]??'—')} → ${k==='precio'?(nv?fmt(nv):'lista'):(nv??'—')}`); x[k]=nv; } }
+          x.notas=d.notas||''; return hist(x,'Datos editados'+(cambios.length?': '+cambios.join(', '):'')); }); cerrarModal(); toast('Lote actualizado'); });
+    return;
+  }
+
+  if(act==='bloquear'||act==='desbloquear'){
+    Store.mutateLote(id,x=>{ x.estado = act==='bloquear'?'bloqueado':'disponible'; return hist(x, act==='bloquear'?'Marcado como no disponible':'Vuelve a estar disponible'); }).then(()=>toast('Estado actualizado')).catch(e=>toast(e.message));
+    return;
+  }
+
+  if(act==='liberar'||act==='anular'){
+    const pag=pagado(l);
+    modal(act==='liberar'?'Liberar lote':'Anular venta',`<p>${act==='liberar'?`El ${esc(loteName(l))} vuelve a quedar <b>disponible</b>${l.cliente?` y se quita la separación de <b>${esc(l.cliente.nombre)}</b>`:''}.`:`Se anula la venta del ${esc(loteName(l))} a <b>${esc(l.cliente?.nombre)}</b> y el lote vuelve a quedar disponible.`}</p>
+      ${pag?`<p>Los pagos recibidos (${fmt(pag)}) quedan guardados en el historial del lote para devolución o penalidad.</p>`:''}
+      <div class="f"><label class="full">Motivo *<input name="motivo" required placeholder="Ej.: no formalizó a tiempo, desistimiento, error en el plano…"></label></div>`,
+      async d=>{ await Store.mutateLote(id,x=>{ x.archivo=[...(x.archivo||[]),{ts:Date.now(),tipo:act,cliente:x.cliente,separacion:x.separacion,venta:x.venta,pagos:x.pagos,motivo:d.motivo}].slice(-10);
+          const nom=x.cliente?.nombre; x.estado='disponible'; x.cliente=null; x.separacion=null; x.venta=null; x.pagos=[];
+          return hist(x,`${act==='liberar'?'Lote liberado':'Venta anulada'} (${nom||'sin cliente registrado'}). Motivo: ${d.motivo}${pag?`. Pagos archivados: ${fmt(pag)}`:''}`); });
+        cerrarModal(); toast(act==='liberar'?'Lote liberado':'Venta anulada'); },act==='liberar'?'Liberar lote':'Anular venta',{danger:true});
+    return;
+  }
+}
+
+function reciboTexto(l,p){
+  const P=S.proyectos[S.pid]||{};
+  return `*${P.nombre}*\nRECIBO DE CAJA N° ${pad(p.recibo)}\nFecha: ${fDate(p.fecha)}\nRecibimos de: ${p.cliente?.nombre||l.cliente?.nombre} (C.C. ${p.cliente?.cedula||l.cliente?.cedula})\nLa suma de: ${fmt(p.valor)} — ${letras(p.valor)} m/cte\nConcepto: ${p.concepto} · ${loteName(l)}\nMedio de pago: ${p.medio}${p.banco?' · '+p.banco:''}${p.ref?' · Ref. '+p.ref:''}\nSaldo pendiente: ${fmt(p.saldoDespues)}\n¡Gracias por su pago!`;
+}
+function verRecibo(l,p){
+  if(!p) return; const P=S.proyectos[S.pid]||{}; const T=TEMAS[P.tema];
+  const f=modal(`Recibo de caja N° ${pad(p.recibo)}`,`<div class="recibo">
+    ${T?.logo?`<div class="r-band"><div class="r-id"><img src="${T.logo}" alt=""><div><b class="t">${esc(P.nombre)}</b><div style="color:#55555D">${esc(P.ubicacion||'')}</div></div></div><div class="r-num">RECIBO DE CAJA<br><b>N° ${pad(p.recibo)}</b></div></div>`
+    :`<div class="r-head"><div><b class="t">${esc(P.nombre)}</b><div style="color:#55555D">${esc(P.ubicacion||'')}</div></div><div class="r-num">RECIBO DE CAJA<br><b>N° ${pad(p.recibo)}</b></div></div>`}
+    <div class="r-row"><span>Fecha</span><b>${fDate(p.fecha)}</b></div>
+    <div class="r-row"><span>Recibimos de</span><b>${esc(p.cliente?.nombre||l.cliente?.nombre)}</b></div>
+    <div class="r-row"><span>C.C. / NIT</span><b>${esc(p.cliente?.cedula||l.cliente?.cedula)}</b></div>
+    <div class="r-row"><span>La suma de</span><b class="r-big">${fmt(p.valor)}</b></div>
+    <div class="r-row"><span>Son</span><b>${esc(letras(p.valor))} m/cte</b></div>
+    <div class="r-row"><span>Concepto</span><b>${esc(p.concepto)} · ${esc(loteName(l))}</b></div>
+    <div class="r-row"><span>Medio de pago</span><b>${esc(p.medio)}${p.banco?' · '+esc(p.banco):''}${p.ref?' · Ref. '+esc(p.ref):''}</b></div>
+    ${p.comprobante?`<div class="r-row"><span>Comprobante</span><b><button type="button" class="btn sm" id="verComp">Ver comprobante adjunto</button></b></div>`:''}
+    <div class="r-row"><span>Saldo pendiente</span><b>${fmt(p.saldoDespues)}</b></div>
+    <div class="r-row" style="border:0"><span>Registrado por</span><b><span data-uid="${esc(p.por)}">Usuario</span> · ${fTs(p.ts)}</b></div>
+  </div>`,null,'',{extra:'<button type="button" class="btn" id="cpR">Copiar para WhatsApp</button>'});
+  f.querySelector('#cpR').onclick=()=>copiar(reciboTexto(l,p),'Recibo copiado: pégalo en WhatsApp');
+  const vc=f.querySelector('#verComp'); if(vc) vc.onclick=()=>verComprobante(p.comprobante,`Comprobante · Recibo N° ${pad(p.recibo)}`);
+  fillNames();
+}
+
+function modalAjustes(){
+  if(!S.canWrite||!S.pid) return; const P=S.proyectos[S.pid]||{};
+  const f=modal('Ajustes del proyecto',`<div class="f">
+    <label class="full">Nombre del proyecto *<input name="nombre" required value="${esc(P.nombre)}"></label>
+    <label class="full">Ubicación<input name="ubicacion" value="${esc(P.ubicacion)}"></label>
+    <label class="full">Valor por m² (solo para lotes sin precio de lista)<input name="valorM2" type="number" min="0" step="1000" value="${+P.valorM2||''}"></label>
+    <label>Valor de separación<input name="sepValor" type="number" min="0" step="50000" value="${+P.sepValor||1000000}"></label>
+    <label>Días de vigencia de separación<input name="sepDias" type="number" min="1" value="${+P.sepDias||15}"></label>
+    <label>Cuota inicial (%)<input name="ciPct" type="number" min="0" max="100" value="${+P.ciPct||30}"></label>
+    <label>Número de cuotas<input name="cuotas" type="number" min="1" max="240" value="${+P.cuotas||24}"></label>
+    <label class="full">Bancos o cuentas que reciben pagos (uno por línea)<textarea name="bancos" rows="4">${esc(bancosProyecto().join('\n'))}</textarea></label></div>`,
+    async d=>{ const n={...P,nombre:d.nombre.trim(),ubicacion:d.ubicacion.trim(),valorM2:+d.valorM2||0,sepValor:+d.sepValor,sepDias:+d.sepDias,ciPct:+d.ciPct,cuotas:+d.cuotas,bancos:String(d.bancos||'').split('\n').map(s=>s.trim()).filter(Boolean)};
+      if(S.mode==='cloud') await Store.lock('proyectos/'+S.pid);
+      await Store.setProyecto(S.pid,n); cerrarModal(); toast('Ajustes guardados'); });
+  liveMoney(f);
+}
+
+function modalProyecto(){
+  if(!S.canWrite) return;
+  const f=modal('Nuevo proyecto',`<div class="f">
+    <label class="full">Nombre del proyecto *<input name="nombre" required placeholder="Ej.: Condominio Los Robles"></label>
+    <label class="full">Ubicación<input name="ubicacion" placeholder="Municipio, departamento"></label>
+    <label>Número de manzanas<input name="manzanas" type="number" min="1" max="26" value="4"></label>
+    <label>Lotes por manzana<input name="porManzana" type="number" min="2" max="60" value="12"></label>
+    <label>Manzanas por fila (plano)<input name="porFila" type="number" min="1" max="8" value="3"></label>
+    <label>Área por lote (m²)<input name="area" type="number" min="1" value="1000"></label>
+    <label>Frente (m)<input name="frente" type="number" min="1" value="20"></label>
+    <label>Fondo (m)<input name="fondo" type="number" min="1" value="50"></label>
+    <label>Precio por lote<input name="precio" type="number" min="0" step="100000" value="45000000"></label>
+    <label>Valor de separación<input name="sepValor" type="number" min="0" step="50000" value="1000000"></label>
+    <label>Días de vigencia de separación<input name="sepDias" type="number" min="1" value="15"></label></div>
+    <p class="hint">Para cargar un plano real (PDF de AutoCAD) con su lista de precios, pídelo y se procesa como el de Montecarlo.</p><p class="hint" id="prog"></p>`,
+    async d=>{
+      const pid=slug(d.nombre)+'-'+Math.random().toString(36).slice(2,6);
+      await Store.setProyecto(pid,{nombre:d.nombre.trim(),ubicacion:d.ubicacion.trim(),porFila:+d.porFila,sepValor:+d.sepValor,sepDias:+d.sepDias,ciPct:30,cuotas:24,creado:Date.now()});
+      const lotes=generarLotes(pid,{manzanas:+d.manzanas,porManzana:+d.porManzana,area:+d.area,frente:+d.frente,fondo:+d.fondo,precio:+d.precio});
+      const prog=f.querySelector('#prog'); let done=0; const queue=[...lotes];
+      const worker=async()=>{ while(queue.length){ const {id,data}=queue.shift(); await Store.setLote(id,data); done++; prog.textContent=`Creando lotes… ${done}/${lotes.length}`; } };
+      await Promise.all([worker(),worker(),worker()]);
+      cerrarModal(); S.view='plano'; selectProyecto(pid); toast('Proyecto creado con '+lotes.length+' lotes');
+    },'Crear proyecto');
+  liveMoney(f);
+}
+</script>
+
+<!-- =========================================================
+     Motor 3D del plano (Three.js)
+     ========================================================= -->
+<script type="module" src="motor3d.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "_nota": "Valores públicos del proyecto Supabase 'Lote Control - Montecarlo' (región São Paulo). La llave 'publishable' está hecha para ir en el navegador; la seguridad la dan las reglas RLS de schema.sql. NUNCA poner aquí la llave 'secret' ni la contraseña de la base.",
+  "url": "https://cekunxepmtipjttbyrwd.supabase.co",
+  "publishableKey": "sb_publishable_DtHFJnuUshphvZjsKRRRxQ_tExnzscw"
+}
